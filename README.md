@@ -24,8 +24,8 @@ sudo systemctl enable docker
 ### 2. Kurulum Dosyalarını Çekme
 Bu depoyu sunucunuza klonlayın:
 ```bash
-git clone <BU_DEPONUN_GITHUB_LINKI>
-cd spartask_sunucu
+git clone https://github.com/mkozan/spartask-deploy.git
+cd spartask-deploy
 ```
 
 ### 3. Docker Hub Girişi
@@ -51,3 +51,40 @@ chmod +x spartask-installer
 2. Bilgisayarınızda **Docker Desktop** uygulamasının açık olduğundan emin olun.
 3. Klasör içindeki `spartask-installer.exe` dosyasına çift tıklayın.
 4. Tarayıcınızda otomatik olarak açılacak olan kurulum sihirbazındaki adımları takip edin.
+
+---
+
+## 🔄 Sunucu Yönetim Komutları
+
+Uygulama sunucuda çalışırken kullanabileceğiniz temel yönetim ve bakım komutları aşağıdadır:
+
+### 1. Uygulamayı Durdurma ve Başlatma
+* **Uygulamayı Durdurmak İçin:**
+  ```bash
+  docker compose -f docker-compose.prod.yml down
+  ```
+* **Uygulamayı Arka Planda Başlatmak İçin:**
+  ```bash
+  docker compose -f docker-compose.prod.yml up -d
+  ```
+* **Uygulama Loglarını Anlık İzlemek İçin:**
+  ```bash
+  docker compose -f docker-compose.prod.yml logs -f
+  ```
+
+### 2. Veritabanını Sıfırlama (Tabloları Yeniden Oluşturma)
+Herhangi bir sebepten ötürü veritabanını sıfırlamak ve `migrations/` altındaki SQL dosyalarını baştan çalıştırarak tabloları yeniden oluşturmak isterseniz sırasıyla şu komutları çalıştırın:
+
+> [!CAUTION]
+> Bu işlem veritabanındaki tüm verileri kalıcı olarak silecektir.
+
+```bash
+# 1. Servisleri durdurun
+docker compose -f docker-compose.prod.yml down
+
+# 2. Eski verileri tamamen temizleyin
+sudo rm -rf ./postgres-data
+
+# 3. Servisleri yeniden başlatın (SQL dosyaları otomatik olarak baştan çalıştırılacaktır)
+docker compose -f docker-compose.prod.yml up -d
+```
