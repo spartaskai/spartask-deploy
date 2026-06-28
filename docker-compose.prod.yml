@@ -1,0 +1,95 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: spartask_db
+    restart: unless-stopped
+    ports:
+      - "${DB_PORT:-5432}:5432" # <-- Dynamic DB Port exposed on host
+    environment:
+      - POSTGRES_USER=${DB_USER:-spartask_user}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-spartask_password}
+      - POSTGRES_DB=${DB_NAME:-spartask}
+    volumes:
+      # Persist Postgres data in a local folder
+      - ./postgres-data:/var/lib/postgresql/data
+      # Run migrations on first-time database initialization
+      - ./migrations:/docker-entrypoint-initdb.d
+    networks:
+      - spartask-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-spartask_user} -d ${DB_NAME:-spartask}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  nats:
+    image: nats:latest
+    container_name: spartask_nats
+    restart: unless-stopped
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    networks:
+      - spartask-net
+
+  api:
+    image: mkozanimages/spartask:latest
+    container_name: spartask_api
+    restart: unless-stopped
+    command: /app/bin/api
+    ports:
+      - "${PORT:-8080}:8080"         # <-- Dynamic application port exposed on host
+      - "${WEBHOOK_PORT:-8000}:8000" # <-- Dynamic WhatsApp Webhook port exposed on host
+    environment:
+      - DATABASE_URL=postgres://${DB_USER:-spartask_user}:${DB_PASSWORD:-spartask_password}@db:5432/${DB_NAME:-spartask}?sslmode=disable
+      - NATS_URL=nats://nats:4222
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - WHATSAPP_ACCESS_TOKEN=${WHATSAPP_ACCESS_TOKEN}
+      - WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID}
+    depends_on:
+      db:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    networks:
+      - spartask-net
+    volumes:
+      - ./downloads:/downloads
+
+  worker:
+    image: mkozanimages/spartask:latest
+    container_name: spartask_worker
+    restart: unless-stopped
+    command: /app/bin/worker
+    environment:
+      - DATABASE_URL=postgres://${DB_USER:-spartask_user}:${DB_PASSWORD:-spartask_password}@db:5432/${DB_NAME:-spartask}?sslmode=disable
+      - NATS_URL=nats://nats:4222
+    depends_on:
+      db:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    networks:
+      - spartask-net
+    volumes:
+      - ./downloads:/downloads
+
+  scheduler:
+    image: mkozanimages/spartask:latest
+    container_name: spartask_scheduler
+    restart: unless-stopped
+    command: /app/bin/scheduler
+    environment:
+      - DATABASE_URL=postgres://${DB_USER:-spartask_user}:${DB_PASSWORD:-spartask_password}@db:5432/${DB_NAME:-spartask}?sslmode=disable
+      - NATS_URL=nats://nats:4222
+    depends_on:
+      db:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    networks:
+      - spartask-net
+
+networks:
+  spartask-net:
+    driver: bridge
