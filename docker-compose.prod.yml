@@ -38,7 +38,7 @@ services:
     restart: unless-stopped
     command: /app/bin/api
     ports:
-      - "${PORT:-8080}:8080"         # <-- Dynamic application port exposed on host
+      - "${API_BIND_HOST:-0.0.0.0}:${PORT:-8080}:8080"         # <-- Dynamic application port exposed on host
       - "${WEBHOOK_PORT:-8000}:8000" # <-- Dynamic WhatsApp Webhook port exposed on host
     environment:
       - DATABASE_URL=postgres://${DB_USER:-spartask_user}:${DB_PASSWORD:-spartask_password}@db:5432/${DB_NAME:-spartask}?sslmode=disable
@@ -46,6 +46,19 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - WHATSAPP_ACCESS_TOKEN=${WHATSAPP_ACCESS_TOKEN}
       - WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID}
+      - WEB_AUTH_JWT_SECRET=${WEB_AUTH_JWT_SECRET:-}
+      - MCP_TOKEN_ISSUANCE_ENABLED=${MCP_TOKEN_ISSUANCE_ENABLED:-false}
+      - MCP_TOKEN_ISSUER_USER_IDS=${MCP_TOKEN_ISSUER_USER_IDS:-}
+      - MCP_TOKEN_MAX_TTL=${MCP_TOKEN_MAX_TTL:-24h}
+      - MCP_JWT_PRIVATE_KEY_FILE=/run/mcp-signing/private.pem
+      - MCP_ENABLED=${MCP_ENABLED:-false}
+      - MCP_ALLOW_LOOPBACK_HTTP=${MCP_ALLOW_LOOPBACK_HTTP:-false}
+      - MCP_RESOURCE_URL=${MCP_RESOURCE_URL:-}
+      - MCP_JWT_ISSUER=${MCP_JWT_ISSUER:-}
+      - MCP_JWT_PUBLIC_KEY=${MCP_JWT_PUBLIC_KEY:-}
+      - MCP_ALLOWED_ORIGINS=${MCP_ALLOWED_ORIGINS:-}
+      - MCP_MAX_BODY_BYTES=${MCP_MAX_BODY_BYTES:-2097152}
+      - MCP_REQUEST_TIMEOUT=${MCP_REQUEST_TIMEOUT:-30s}
     depends_on:
       db:
         condition: service_healthy
@@ -55,6 +68,7 @@ services:
       - spartask-net
     volumes:
       - ./downloads:/downloads
+      - ./.secrets/mcp/private.pem:/run/mcp-signing/private.pem:ro
 
   worker:
     image: mkozanimages/spartask:latest
