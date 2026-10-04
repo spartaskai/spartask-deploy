@@ -77,6 +77,18 @@ sudo ./spartaskctl restore backups/20261004T033000Z -with-config  # yeni sunucuy
 - Yedek içeriği: `spartask.dump` (pg_dump), `storage.tar.gz`, `config.tar.gz` (.env, sertifikalar), marketplace varsa `marketplace.dump` ve `marketplace-storage.tar.gz`. Yedekleri sunucu dışına da kopyalayın (DigitalOcean backup, S3, vb.).
 - Veritabanına bağlanmak: `sudo docker compose exec db psql -U spartask spartask`
 
+## Kayıt ve platform süreçleri
+
+- **E-posta onaylı kayıt:** Şifreyle kayıt olan firma, onay e-postasındaki bağlantı açılınca oluşturulur (bağlantı 24 saat geçerli). Bunun için `.env` içinde `INVITATION_SMTP_*` dolu olmalıdır; SMTP yoksa production'da şifreyle kayıt kapalıdır (Google ile kayıt çalışır).
+- **Platform olayları:** Yeni firma oluştuğunda `tenant.created` olayı scheduler tarafından `PLATFORM_EVENTS_WEBHOOK_URL` adresine (`X-Webhook-Token` başlığıyla) gönderilir; teslim edilemezse artan aralıklarla tekrar denenir. Önerilen hedef, kendi firmanızdaki bir **API Dinleyici** sürecidir:
+  1. Kendi firmanızda (ör. `https://spartask.spartask.ai`) API Dinleyici ile başlayan bir süreç oluşturun: yol `tenant-created`, güvenlik anahtarı `openssl rand -hex 24` çıktısı. Olay verisi `body.data` altındadır (`tenant_id`, `name`, `subdomain`, `admin_email`, `admin_full_name`, `signup_method`, `created_at`).
+  2. `.env`: `PLATFORM_EVENTS_WEBHOOK_URL=https://spartask.spartask.ai/api/webhooks/tenant-created`, `PLATFORM_EVENTS_WEBHOOK_TOKEN=<aynı anahtar>`, ardından `spartaskctl restart`. URL boşken olaylar `public.platform_events` tablosunda bekler ve ayar yapılınca teslim edilir.
+- **Firmalara hatırlatıcılar:** Kendi firmanızda zamanlanmış bir süreç + platform veritabanına salt-okunur bir veri kaynağı kullanın (firma listesi `public.tenants`: `id`, `name`, `subdomain`, `status`, `created_at`, `contact_email`). Salt-okunur kullanıcı:
+  ```bash
+  sudo docker compose exec db psql -U spartask spartask -c "CREATE ROLE platform_reader LOGIN PASSWORD '<güçlü-şifre>'; GRANT USAGE ON SCHEMA public TO platform_reader; GRANT SELECT ON public.tenants, public.tenant_wallets TO platform_reader;"
+  ```
+  Veri kaynağı: host `db`, port `5432`, veritabanı `spartask`, kullanıcı `platform_reader`.
+
 ## Sürüm çıkarma (geliştirici)
 
 1. Lokalde geliştir (`spartask_backend` içinde `docker compose up` veya `go run`); veritabanı değişikliği yeni bir `migrations/0NN_*.sql` dosyasıdır (tekrar çalıştırılabilir yazılır).
@@ -94,4 +106,4 @@ Bu depo (`spartask-deploy`) değiştiğinde `git tag v1.x.y && git push origin v
 | API açılmıyor | `spartaskctl logs migrate` ve `spartaskctl logs api` — `SECRET_KEY`/`WEB_AUTH_JWT_SECRET` eksikse API başlamaz |
 | Tarayıcıda sertifika hatası | `certs/cert.pem` domain ve `*.domain`'i kapsamalı; Cloudflare kullanılıyorsa SSL modu **Full (strict)** |
 | Firma adresi açılmıyor | DNS'te `*` kaydı var mı, `SPARTASK_DOMAIN` doğru mu |
-| Giden mail gitmiyor | Bulut sağlayıcılar SMTP portlarını engelleyebilir; mail servisinin 587 relay'ini kullanın |
+| Giden mail gitmiyor | DigitalOcean 25, 465 ve 587 portlarını engeller; mail servisinin 2525 portunu kullanın (ör. Brevo smtp-relay.brevo.com:2525) |
