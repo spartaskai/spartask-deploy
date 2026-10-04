@@ -1,90 +1,97 @@
-# Spartask Kolay Kurulum Kılavuzu
+# Spartask Deploy
 
-Bu depo, Spartask uygulamasını Windows veya Linux (Ubuntu) sunucularda kaynak kodlara ihtiyaç duymadan hızlıca ayağa kaldırmak için gerekli tüm dağıtım dosyalarını içerir.
+Spartask'ı bir Linux sunucuya (bulut ya da müşterinin kendi sunucusu / on-premise) kurmak ve işletmek için gereken her şey:
 
-## Depo İçeriği
-- `spartask-installer`: Linux (Ubuntu) için interaktif/sessiz kurulum programı.
-- `spartask-installer.exe`: Windows için web tabanlı görsel kurulum programı.
-- `docker-compose.prod.yml`: Üretim ortamı için Docker servis tanımları.
-- `migrations/`: Veritabanı tablolarını otomatik oluşturmak için gerekli SQL şemaları.
+| Dosya | Görevi |
+|---|---|
+| `compose.yml` | Uygulama yığını: Caddy (HTTPS), PostgreSQL, NATS, `migrate`, API (web arayüzü dahil), worker, scheduler |
+| `compose.marketplace.yml` | Marketplace (sadece platform sunucusunda, `--with-marketplace`) |
+| `caddy/` | Reverse proxy ve TLS ayarı — `domain` ve tüm firma alt alan adları (`*.domain`) |
+| `.env.example`, `marketplace.env.example` | Ayar şablonları (kurulumda `.env` / `marketplace.env` olarak, mode 600, üretilmiş şifrelerle yazılır) |
+| `spartaskctl` | Kurulum ve işletim aracı (Go): `install`, `update`, `backup`, `restore`, `status`, `logs`, `restart` |
 
----
+Uygulama imajları GitHub Actions tarafından sürüm etiketiyle üretilir (`ghcr.io/spartaskai/spartask:<sürüm>`). Sunucuda kaynak kod veya derleme yoktur; sadece imaj çekilir.
 
-## 🐧 Linux (Ubuntu) Kurulum Adımları
+## Mimari
 
-### 1. Docker ve Docker Compose Kurulumu
-Eğer sunucunuzda Docker kurulu değilse, terminalden şu komutlarla hızlıca kurabilirsiniz:
-```bash
-sudo apt update
-sudo apt install -y docker.io docker-compose
-sudo systemctl start docker
-sudo systemctl enable docker
+```
+İnternet ─► Caddy :443 ─┬─► api:8080 (web + /api + /config.js)   spartask.ai, *.spartask.ai
+                        └─► marketplace-web:3000 ─► marketplace-backend   (opsiyonel)
+             iç ağ:  db (PostgreSQL) · nats · worker · scheduler · migrate (her açılışta bir kez)
 ```
 
-### 2. Kurulum Dosyalarını Çekme
-Bu depoyu sunucunuza klonlayın:
-```bash
-git clone https://github.com/mkozan/spartask-deploy.git
-cd spartask-deploy
-```
+- Dışarıya sadece 80/443 açılır. Veritabanı ve NATS sadece iç ağdadır.
+- Her `up`/`update` öncesinde `migrate` servisi bekleyen veritabanı değişikliklerini public şemaya ve **tüm firma şemalarına** uygular; başarısız olursa API eski sürümde kalır.
+- Domain hiçbir imaja gömülü değildir: web arayüzü ayarlarını çalışırken `/config.js`'ten alır. Aynı imaj her müşteride çalışır.
 
-### 3. Docker Hub Girişi
-Private imajı (`mkozanimages/spartask:latest`) çekebilmek için Docker Hub hesabınızla giriş yapın:
-```bash
-docker login -u mkozanimages
-```
-*Şifre sorulduğunda Docker Hub'dan oluşturduğunuz **Kişisel Erişim Anahtarınızı (PAT)** yapıştırıp Enter'a basın.*
+## Kurulum
 
-### 4. Kurulum Sihirbazını Çalıştırma
-Kurulum dosyasına çalıştırma izni verin ve interaktif kurulumu başlatın:
-```bash
-chmod +x spartask-installer
-./spartask-installer -cli
-```
-*Yükleyici size gerekli soruları (Uygulama Portu, Gemini API Key vb.) soracak, `.env` dosyasını oluşturacak ve tüm servisleri arka planda ayağa kaldıracaktır.*
-
----
-
-## 🪟 Windows Kurulum Adımları
-
-1. Bu depoyu bilgisayarınıza indirin (ZIP olarak indirip bir klasöre çıkartabilirsiniz).
-2. Bilgisayarınızda **Docker Desktop** uygulamasının açık olduğundan emin olun.
-3. Klasör içindeki `spartask-installer.exe` dosyasına çift tıklayın.
-4. Tarayıcınızda otomatik olarak açılacak olan kurulum sihirbazındaki adımları takip edin.
-
----
-
-## 🔄 Sunucu Yönetim Komutları
-
-Uygulama sunucuda çalışırken kullanabileceğiniz temel yönetim ve bakım komutları aşağıdadır:
-
-### 1. Uygulamayı Durdurma ve Başlatma
-* **Uygulamayı Durdurmak İçin:**
-  ```bash
-  docker compose -f docker-compose.prod.yml down
-  ```
-* **Uygulamayı Arka Planda Başlatmak İçin:**
-  ```bash
-  docker compose -f docker-compose.prod.yml up -d
-  ```
-* **Uygulama Loglarını Anlık İzlemek İçin:**
-  ```bash
-  docker compose -f docker-compose.prod.yml logs -f
-  ```
-
-### 2. Veritabanını Sıfırlama (Tabloları Yeniden Oluşturma)
-Herhangi bir sebepten ötürü veritabanını sıfırlamak ve `migrations/` altındaki SQL dosyalarını baştan çalıştırarak tabloları yeniden oluşturmak isterseniz sırasıyla şu komutları çalıştırın:
-
-> [!CAUTION]
-> Bu işlem veritabanındaki tüm verileri kalıcı olarak silecektir.
+**Gereksinimler:** Ubuntu 22.04/24.04 (2 vCPU, 4 GB RAM önerilir), Docker Engine + Compose eklentisi (`curl -fsSL https://get.docker.com | sh`), domain için `A` kaydı ve `*` (wildcard) kaydı.
 
 ```bash
-# 1. Servisleri durdurun
-docker compose -f docker-compose.prod.yml down
+sudo mkdir -p /opt/spartask && cd /opt/spartask
+curl -fsSL https://github.com/mkozan/spartask-deploy/releases/latest/download/spartask-deploy-linux-amd64.tar.gz | sudo tar xz --strip-components=1
 
-# 2. Eski verileri tamamen temizleyin
-sudo rm -rf ./postgres-data
+# TLS sertifikası: domain ve *.domain'i kapsayan sertifika + anahtar (ör. Cloudflare Origin Certificate)
+sudo mkdir -m 700 certs
+sudo nano certs/cert.pem     # "Origin Certificate" içeriği
+sudo nano certs/key.pem      # "Private Key" içeriği
 
-# 3. Servisleri yeniden başlatın (SQL dosyaları otomatik olarak baştan çalıştırılacaktır)
-docker compose -f docker-compose.prod.yml up -d
+sudo ./spartaskctl install
 ```
+
+`install` şunları sorar: domain, sürüm, TLS modu, Cloudflare kullanımı, (opsiyonel) Gemini anahtarı ve günlük yedek görevi. Tüm şifreleri kendisi üretir, imajları çeker, migration'ları uygular ve API sağlıklı olana kadar bekler.
+
+Örnekler:
+
+```bash
+# Platform sunucusu (spartask.ai, Cloudflare arkasında, marketplace dahil, imajlar private)
+sudo ./spartaskctl install -domain spartask.ai -cloudflare -with-marketplace -registry-user <github-kullanıcısı>
+
+# On-premise müşteri (kendi sertifikası, merkezi marketplace'e bağlı)
+sudo ./spartaskctl install -domain spartask.firma.com.tr -cert /root/firma.crt -key /root/firma.key \
+     -marketplace-url https://marketplace.spartask.ai
+
+# Kapalı ağ (sertifika yok, Caddy kendi CA'sını kullanır)
+sudo ./spartaskctl install -domain spartask.local -tls internal
+```
+
+> **Önemli:** `.env` içindeki `SECRET_KEY`, veri kaynağı / mail sunucusu / yapay zeka şifrelerini şifreler. Kurulumdan sonra `.env`'in bir kopyasını şifre yöneticisine koyun; bu anahtar olmadan yedekteki şifreler çözülemez.
+
+Private imajlar için `-registry-user` ile `read:packages` yetkili bir GitHub token'ı sorulur (veya önceden `docker login ghcr.io`).
+
+## Günlük işletim
+
+```bash
+sudo ./spartaskctl status              # sürüm, container'lar, migration durumu
+sudo ./spartaskctl update 1.3.0        # yedek al → imajı çek → migrate → yeniden başlat → sağlık kontrolü
+sudo ./spartaskctl update 1.3.0 -marketplace-version 1.3.0
+sudo ./spartaskctl logs api            # canlı loglar (api, worker, scheduler, migrate, caddy, db ...)
+sudo ./spartaskctl restart             # .env değişikliklerini uygula
+sudo ./spartaskctl backup              # backups/<zaman>/ altına yedek (en yeni BACKUP_KEEP adet tutulur)
+sudo ./spartaskctl restore backups/20261004T033000Z               # veriyi yedekten geri yükle
+sudo ./spartaskctl restore backups/20261004T033000Z -with-config  # yeni sunucuya taşıma: .env ve sertifikalar da
+```
+
+- `update` başarısız olursa `.env` önceki sürüme döner; `spartaskctl restart` eski sürümü tekrar ayağa kaldırır. Başarısız bir migration dosyası kendi transaction'ında geri alınır.
+- Yedek içeriği: `spartask.dump` (pg_dump), `storage.tar.gz`, `config.tar.gz` (.env, sertifikalar), marketplace varsa `marketplace.dump` ve `marketplace-storage.tar.gz`. Yedekleri sunucu dışına da kopyalayın (DigitalOcean backup, S3, vb.).
+- Veritabanına bağlanmak: `sudo docker compose exec db psql -U spartask spartask`
+
+## Sürüm çıkarma (geliştirici)
+
+1. Lokalde geliştir (`spartask_backend` içinde `docker compose up` veya `go run`); veritabanı değişikliği yeni bir `migrations/0NN_*.sql` dosyasıdır (tekrar çalıştırılabilir yazılır).
+2. `spartask_backend`'de etiket at: `git tag v1.3.0 && git push origin v1.3.0` → Actions testleri çalıştırır ve `ghcr.io/spartaskai/spartask:1.3.0` imajını yayınlar (web arayüzü `spartask_web` main dalından gömülür).
+3. Marketplace için aynısı `spartask_marketplace`'te → `marketplace-api` ve `marketplace-web` imajları.
+4. Sunucuda: `sudo ./spartaskctl update 1.3.0`.
+
+Bu depo (`spartask-deploy`) değiştiğinde `git tag v1.x.y && git push origin v1.x.y` ile yeni kurulum paketi yayınlanır. Mevcut bir sunucuda compose/Caddy dosyalarını güncellemek için yeni paketi aynı klasöre açın (`.env`, `data/`, `certs/`, `backups/` dokunulmadan kalır) ve `spartaskctl restart` çalıştırın.
+
+## Sorun giderme
+
+| Belirti | Kontrol |
+|---|---|
+| `install`/`update` imaj çekemiyor | `docker login ghcr.io` (private imaj), sürüm etiketinin GHCR'da olduğundan emin olun |
+| API açılmıyor | `spartaskctl logs migrate` ve `spartaskctl logs api` — `SECRET_KEY`/`WEB_AUTH_JWT_SECRET` eksikse API başlamaz |
+| Tarayıcıda sertifika hatası | `certs/cert.pem` domain ve `*.domain`'i kapsamalı; Cloudflare kullanılıyorsa SSL modu **Full (strict)** |
+| Firma adresi açılmıyor | DNS'te `*` kaydı var mı, `SPARTASK_DOMAIN` doğru mu |
+| Giden mail gitmiyor | Bulut sağlayıcılar SMTP portlarını engelleyebilir; mail servisinin 587 relay'ini kullanın |

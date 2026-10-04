@@ -1,0 +1,152 @@
+# Spartask production stack. Managed with spartaskctl (install / update / backup / restore / status);
+# plain `docker compose ...` works too, since .env sets COMPOSE_FILE and every variable.
+#
+# Only Caddy publishes ports (80/443). PostgreSQL, NATS and the app containers are reachable only on
+# the internal network; use `docker compose exec db psql -U spartask spartask` for database work.
+
+name: spartask
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-app: &app
+  image: ${SPARTASK_IMAGE:-ghcr.io/spartaskai/spartask}:${SPARTASK_VERSION:?SPARTASK_VERSION must be set in .env}
+  restart: unless-stopped
+  logging: *logging
+  # Every application setting lives in .env; the values below are derived and always win.
+  env_file: .env
+  networks: [spartask]
+
+x-app-environment: &app-environment
+  DATABASE_URL: postgres://${DB_USER:-spartask}:${DB_PASSWORD:?DB_PASSWORD must be set in .env}@db:5432/${DB_NAME:-spartask}?sslmode=disable
+  NATS_URL: nats://nats:4222
+  SPARTASK_BASE_DOMAIN: ${SPARTASK_DOMAIN:?SPARTASK_DOMAIN must be set in .env}
+  SPARTASK_WEB_BASE_URL: https://${SPARTASK_DOMAIN}
+  SPARTASK_REQUIRE_PUBLIC_DOMAIN: "true"
+  # Caddy is the only proxy in front of the app; it lives on this subnet.
+  SPARTASK_TRUSTED_PROXY_CIDRS: ${SPARTASK_SUBNET:-172.30.10.0/24}
+  STORAGE_BASE_DIR: /app/storage/tenants
+  MCP_JWT_PRIVATE_KEY_FILE: /run/mcp-signing/private.pem
+  MOBILE_APK_PATH: /app/mobile/spartask.apk
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    logging: *logging
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SPARTASK_DOMAIN: ${SPARTASK_DOMAIN}
+      SPARTASK_TLS: ${SPARTASK_TLS:-/certs/cert.pem /certs/key.pem}
+      CADDY_TRUSTED_PROXIES: ${CADDY_TRUSTED_PROXIES:-private_ranges}
+      MARKETPLACE_DOMAIN: ${MARKETPLACE_DOMAIN:-}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+    networks: [spartask]
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_USER: ${DB_USER:-spartask}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-spartask}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    shm_size: 256mb
+    networks: [spartask]
+
+  nats:
+    image: nats:2.11-alpine
+    restart: unless-stopped
+    logging: *logging
+    command: ["-js", "-sd", "/data"]
+    volumes:
+      - ./data/nats:/data
+    networks: [spartask]
+
+  # Applies pending schema migrations (public + every tenant schema) and exits. It runs on every
+  # `up`; the app services start only after it succeeded.
+  migrate:
+    <<: *app
+    restart: "no"
+    entrypoint: ["/app/bin/migrate"]
+    environment:
+      <<: *app-environment
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    command: ["/app/bin/api"]
+    environment:
+      <<: *app-environment
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    volumes:
+      - ./data/storage:/app/storage
+      - ./data/downloads:/downloads
+      - ./mobile:/app/mobile:ro
+      - ./.secrets/mcp:/run/mcp-signing:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      nats:
+        condition: service_started
+
+  worker:
+    <<: *app
+    command: ["/app/bin/worker"]
+    environment:
+      <<: *app-environment
+    volumes:
+      - ./data/storage:/app/storage
+      - ./data/downloads:/downloads
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      nats:
+        condition: service_started
+
+  scheduler:
+    <<: *app
+    command: ["/app/bin/scheduler"]
+    environment:
+      <<: *app-environment
+    volumes:
+      - ./data/storage:/app/storage
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  spartask:
+    ipam:
+      config:
+        - subnet: ${SPARTASK_SUBNET:-172.30.10.0/24}

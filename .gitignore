@@ -1,0 +1,14 @@
+# Installation state (never commit)
+.env
+marketplace.env
+data/
+backups/
+certs/
+.secrets/
+mobile/*.apk
+
+# Build output
+/spartaskctl/spartaskctl
+/spartaskctl/spartaskctl.exe
+/spartaskctl-*
+/dist/

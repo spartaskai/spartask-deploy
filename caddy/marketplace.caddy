@@ -1,0 +1,17 @@
+# Marketplace storefront (only on the platform server; see compose.marketplace.yml).
+{$MARKETPLACE_DOMAIN} {
+	tls {$SPARTASK_TLS}
+	encode zstd gzip
+
+	request_body {
+		max_size 60MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# nginx in marketplace-web serves the SPA and proxies /api to marketplace-backend.
+	reverse_proxy marketplace-web:3000
+}

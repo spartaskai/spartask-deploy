@@ -1,0 +1,34 @@
+# Spartask reverse proxy. Values come from .env through compose.yml:
+#   SPARTASK_DOMAIN        e.g. spartask.ai — serves it and every tenant subdomain (*.spartask.ai)
+#   SPARTASK_TLS           "/certs/cert.pem /certs/key.pem" (certificate files, e.g. Cloudflare Origin)
+#                          or "internal" (Caddy's own CA, for closed networks)
+#   CADDY_TRUSTED_PROXIES  proxies allowed to report the client IP ("private_ranges", or the
+#                          Cloudflare ranges when the domain is proxied by Cloudflare)
+{
+	servers {
+		trusted_proxies static {$CADDY_TRUSTED_PROXIES}
+		client_ip_headers CF-Connecting-IP X-Forwarded-For
+	}
+}
+
+{$SPARTASK_DOMAIN}, *.{$SPARTASK_DOMAIN} {
+	tls {$SPARTASK_TLS}
+	encode zstd gzip
+
+	request_body {
+		max_size 100MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# The API also serves the web app and /config.js; Host is passed through for tenant routing.
+	reverse_proxy api:8080
+}
+
+# Optional sites (compose.marketplace.yml mounts marketplace.caddy here).
+import /etc/caddy/sites/*.caddy

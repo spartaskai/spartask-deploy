@@ -1,0 +1,72 @@
+# Spartask Marketplace — only on the platform server (marketplace.<domain>); on-premise
+# installations use the central marketplace and do not need this file.
+# Enabled by `spartaskctl install --with-marketplace`, which adds it to COMPOSE_FILE in .env.
+# Secrets live in marketplace.env so the engine containers never see them.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  caddy:
+    volumes:
+      - ./caddy/marketplace.caddy:/etc/caddy/sites/marketplace.caddy:ro
+
+  marketplace-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_USER: marketplace
+      POSTGRES_PASSWORD: ${MARKETPLACE_DB_PASSWORD:?MARKETPLACE_DB_PASSWORD must be set in .env}
+      POSTGRES_DB: marketplace
+    volumes:
+      - ./data/marketplace-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marketplace -d marketplace"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [spartask]
+
+  # The service name is fixed: the marketplace-web nginx proxies /api to marketplace-backend:8085.
+  marketplace-backend:
+    image: ${MARKETPLACE_API_IMAGE:-ghcr.io/spartaskai/marketplace-api}:${MARKETPLACE_VERSION:?MARKETPLACE_VERSION must be set in .env}
+    restart: unless-stopped
+    logging: *logging
+    env_file: marketplace.env
+    environment:
+      APP_ENV: production
+      PORT: "8085"
+      DB_HOST: marketplace-db
+      DB_PORT: "5432"
+      DB_USER: marketplace
+      DB_PASSWORD: ${MARKETPLACE_DB_PASSWORD}
+      DB_NAME: marketplace
+      DB_SSLMODE: disable
+      LICENSE_STORAGE_PATH: /var/spartask
+      PUBLIC_API_URL: https://${MARKETPLACE_DOMAIN:?MARKETPLACE_DOMAIN must be set in .env}
+      FRONTEND_URL: https://${MARKETPLACE_DOMAIN}
+      CORS_ALLOWED_ORIGINS: https://${MARKETPLACE_DOMAIN}
+      TRUSTED_PROXIES: ${SPARTASK_SUBNET:-172.30.10.0/24}
+    volumes:
+      # Named volume: the image runs as uid 10001 and owns /var/spartask.
+      - marketplace_storage:/var/spartask
+    depends_on:
+      marketplace-db:
+        condition: service_healthy
+    networks: [spartask]
+
+  marketplace-web:
+    image: ${MARKETPLACE_WEB_IMAGE:-ghcr.io/spartaskai/marketplace-web}:${MARKETPLACE_VERSION}
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      marketplace-backend:
+        condition: service_healthy
+    networks: [spartask]
+
+volumes:
+  marketplace_storage:
