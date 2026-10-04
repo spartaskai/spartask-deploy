@@ -1,3 +1,3 @@
-module github.com/mkozan/spartask-deploy/spartaskctl
+module github.com/spartaskai/spartask-deploy/spartaskctl
 
 go 1.24

@@ -30,7 +30,7 @@ Uygulama imajları GitHub Actions tarafından sürüm etiketiyle üretilir (`ghc
 
 ```bash
 sudo mkdir -p /opt/spartask && cd /opt/spartask
-curl -fsSL https://github.com/mkozan/spartask-deploy/releases/latest/download/spartask-deploy-linux-amd64.tar.gz | sudo tar xz --strip-components=1
+curl -fsSL https://github.com/spartaskai/spartask-deploy/releases/latest/download/spartask-deploy-linux-amd64.tar.gz | sudo tar xz --strip-components=1
 
 # TLS sertifikası: domain ve *.domain'i kapsayan sertifika + anahtar (ör. Cloudflare Origin Certificate)
 sudo mkdir -m 700 certs
