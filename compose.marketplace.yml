@@ -2,6 +2,9 @@
 # installations use the central marketplace and do not need this file.
 # Enabled by `spartaskctl install --with-marketplace`, which adds it to COMPOSE_FILE in .env.
 # Secrets live in marketplace.env so the engine containers never see them.
+# Networks: Caddy reaches marketplace-web/backend on marketplace-front; the marketplace database
+# is alone with its backend on the internal marketplace-data network. Engine containers (api,
+# worker) are on neither.
 
 x-logging: &logging
   driver: json-file
@@ -11,6 +14,7 @@ x-logging: &logging
 
 services:
   caddy:
+    networks: [spartask, marketplace-front]
     volumes:
       - ./caddy/marketplace.caddy:/etc/caddy/sites/marketplace.caddy:ro
 
@@ -29,7 +33,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    networks: [spartask]
+    networks: [marketplace-data]
 
   # The service name is fixed: the marketplace-web nginx proxies /api to marketplace-backend:8085.
   marketplace-backend:
@@ -50,14 +54,14 @@ services:
       PUBLIC_API_URL: https://${MARKETPLACE_DOMAIN:?MARKETPLACE_DOMAIN must be set in .env}
       FRONTEND_URL: https://${MARKETPLACE_DOMAIN}
       CORS_ALLOWED_ORIGINS: https://${MARKETPLACE_DOMAIN}
-      TRUSTED_PROXIES: ${SPARTASK_SUBNET:-172.30.10.0/24}
+      TRUSTED_PROXIES: ${MARKETPLACE_FRONT_SUBNET:-172.30.11.0/24}
     volumes:
       # Named volume: the image runs as uid 10001 and owns /var/spartask.
       - marketplace_storage:/var/spartask
     depends_on:
       marketplace-db:
         condition: service_healthy
-    networks: [spartask]
+    networks: [marketplace-front, marketplace-data]
 
   marketplace-web:
     image: ${MARKETPLACE_WEB_IMAGE:-ghcr.io/spartaskai/marketplace-web}:${MARKETPLACE_VERSION}
@@ -66,7 +70,18 @@ services:
     depends_on:
       marketplace-backend:
         condition: service_healthy
-    networks: [spartask]
+    networks: [marketplace-front]
+
+networks:
+  marketplace-front:
+    ipam:
+      config:
+        - subnet: ${MARKETPLACE_FRONT_SUBNET:-172.30.11.0/24}
+  marketplace-data:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${MARKETPLACE_DATA_SUBNET:-172.30.12.0/24}
 
 volumes:
   marketplace_storage:

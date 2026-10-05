@@ -23,6 +23,8 @@ x-app: &app
 x-app-environment: &app-environment
   DATABASE_URL: postgres://${DB_USER:-spartask}:${DB_PASSWORD:?DB_PASSWORD must be set in .env}@db:5432/${DB_NAME:-spartask}?sslmode=disable
   NATS_URL: nats://nats:4222
+  # Company connection targets never reach the stack's own networks (marketplace included).
+  SPARTASK_PLATFORM_CIDRS: ${SPARTASK_SUBNET:-172.30.10.0/24},${MARKETPLACE_FRONT_SUBNET:-172.30.11.0/24},${MARKETPLACE_DATA_SUBNET:-172.30.12.0/24}
   SPARTASK_BASE_DOMAIN: ${SPARTASK_DOMAIN:?SPARTASK_DOMAIN must be set in .env}
   SPARTASK_WEB_BASE_URL: https://${SPARTASK_DOMAIN}
   SPARTASK_REQUIRE_PUBLIC_DOMAIN: "true"
@@ -77,7 +79,8 @@ services:
     image: nats:2.11-alpine
     restart: unless-stopped
     logging: *logging
-    command: ["-js", "-sd", "/data"]
+    # Token auth; the app containers read the same NATS_AUTH_TOKEN from .env.
+    command: ["-js", "-sd", "/data", "--auth", "${NATS_AUTH_TOKEN:?NATS_AUTH_TOKEN must be set in .env (spartaskctl restart adds it)}"]
     volumes:
       - ./data/nats:/data
     networks: [spartask]

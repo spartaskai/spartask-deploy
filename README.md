@@ -83,11 +83,28 @@ sudo ./spartaskctl restore backups/20261004T033000Z -with-config  # yeni sunucuy
 - **Platform olayları:** Yeni firma oluştuğunda `tenant.created` olayı scheduler tarafından `PLATFORM_EVENTS_WEBHOOK_URL` adresine (`X-Webhook-Token` başlığıyla) gönderilir; teslim edilemezse artan aralıklarla tekrar denenir. Önerilen hedef, kendi firmanızdaki bir **API Dinleyici** sürecidir:
   1. Kendi firmanızda (ör. `https://spartask.spartask.ai`) API Dinleyici ile başlayan bir süreç oluşturun: yol `tenant-created`, güvenlik anahtarı `openssl rand -hex 24` çıktısı. Olay verisi `body.data` altındadır (`tenant_id`, `name`, `subdomain`, `admin_email`, `admin_full_name`, `signup_method`, `created_at`).
   2. `.env`: `PLATFORM_EVENTS_WEBHOOK_URL=https://spartask.spartask.ai/api/webhooks/tenant-created`, `PLATFORM_EVENTS_WEBHOOK_TOKEN=<aynı anahtar>`, ardından `spartaskctl restart`. URL boşken olaylar `public.platform_events` tablosunda bekler ve ayar yapılınca teslim edilir.
-- **Firmalara hatırlatıcılar:** Kendi firmanızda zamanlanmış bir süreç + platform veritabanına salt-okunur bir veri kaynağı kullanın (firma listesi `public.tenants`: `id`, `name`, `subdomain`, `status`, `created_at`, `contact_email`). Salt-okunur kullanıcı:
-  ```bash
-  sudo docker compose exec db psql -U spartask spartask -c "CREATE ROLE platform_reader LOGIN PASSWORD '<güçlü-şifre>'; GRANT USAGE ON SCHEMA public TO platform_reader; GRANT SELECT ON public.tenants, public.tenant_wallets TO platform_reader;"
-  ```
-  Veri kaynağı: host `db`, port `5432`, veritabanı `spartask`, kullanıcı `platform_reader`.
+- **Firmalara hatırlatıcılar:** Kendi firmanızda zamanlanmış bir süreç, firma listesini **platform API'sinden** alır (`GET /api/platform/tenants`). API yalnızca `SPARTASK_PLATFORM_TENANT_IDS` içindeki firmanın adresinde çalışır; başka her firmaya `401` döner.
+  1. `.env`: `SPARTASK_PLATFORM_TENANT_IDS=<kendi firmanızın public.tenants.id değeri>` ve süreçler için `SPARTASK_PLATFORM_API_TOKEN=<openssl rand -hex 32>`, ardından `spartaskctl restart`. Firma kimliği: `sudo docker compose exec db psql -U spartask spartask -c "SELECT id, subdomain FROM public.tenants"`.
+  2. Süreçte **HTTP İstemcisi (WEBHOOK_SENDER)** düğümü: `GET https://<firmanız>.<domain>/api/platform/tenants?status=active`, başlık `X-Spartask-Platform-Token: <token>`. Yanıt `response_body.tenants` altında: `id`, `name`, `subdomain`, `status`, `contact_email`, `created_at`, `credit_balance`. Filtreler: `status` (active/suspended), `created_after` / `created_before` (RFC 3339), `limit` (en çok 500), `offset`.
+  3. Web oturumuyla çağrı da mümkündür (sadece o firmanın ADMIN kullanıcıları).
+- **Platform veritabanı:** Firma veri kaynakları platform servislerine (`db`, `nats`, marketplace) bağlanamaz. Önceki sürümlerde önerilen `platform_reader` / `host=db` veri kaynağı artık reddedilir; bu kullanıcıyı silebilirsiniz: `DROP ROLE IF EXISTS platform_reader;`
+
+## Firma bağlantılarında ağ güvenliği
+
+Veri kaynakları (PostgreSQL, MySQL, SQL Server, modül migration'ları dahil), mail sunucuları, yapay zeka uç noktaları, HTTP İstemcisi düğümü, MCP sunucuları ve Excel indirmeleri aynı politikayla açılır:
+
+- Loopback, link-local (bulut metadata servisi `169.254.169.254`), çok noktaya yayın ve özel amaçlı IP aralıkları **her zaman** reddedilir. Stack'in kendi ağları (`SPARTASK_SUBNET`, marketplace alt ağları) da her zaman reddedilir.
+- Özel ağlar (10/8, 172.16/12, 192.168/16, 100.64/10, fc00::/7) varsayılan olarak kapalıdır:
+  - **Tek firmalık on-premise kurulum:** `SPARTASK_EGRESS_ALLOW_PRIVATE=true` ile tüm firmalar şirket ağına erişir.
+  - **Firma bazlı istisna:** `SPARTASK_EGRESS_PRIVATE_GRANTS='[{"tenant":"tenant_acme","host":"db.musteri.local","port":5432,"cidrs":["10.80.4.20/32"]}]'` (`tenant` = firma şema adı; host, port ve IP birlikte eşleşmelidir).
+- Ad çözümlemesi bağlantı anında bir kez yapılır, dönen adreslerin hepsi kontrol edilir ve bağlantı kontrol edilen adrese açılır (DNS rebinding işe yaramaz). HTTP yönlendirmeleri de kontrol edilir; ortam proxy'leri kullanılmaz.
+- Sunucunun public IP'sini `SPARTASK_EGRESS_DENY_CIDRS`'e ekleyin — **yalnızca domain Cloudflare proxy'si arkasındaysa.** Aksi halde domain'in adresi de bu IP'dir ve firmaların kendi Spartask API'nize (ör. platform API'si) yaptığı çağrılar da engellenir.
+- Yerel (stdio) MCP sunucuları kaldırıldı: firma süreçleri sunucuda komut çalıştıramaz. Bu ayarı kullanan süreçler hata verir; HTTP MCP sunucusuna taşınmalıdır.
+- Engellenen hedef API'de `403 OUTBOUND_TARGET_DENIED` olarak döner.
+- NATS, `NATS_AUTH_TOKEN` ile korunur. `install` üretir; eski kurulumlarda `update`/`restart` eksik token'ı `.env`'e ekler (mevcut değer değişmez). Düz `docker compose` kullanıyorsanız önce `NATS_AUTH_TOKEN=$(openssl rand -hex 32)` ekleyin.
+- Marketplace veritabanı yalnızca marketplace backend'iyle aynı internal ağdadır; engine (api/worker) marketplace ağlarına bağlı değildir.
+
+**Yükseltmeden önce:** iç ağdaki veritabanı/SMTP/Ollama/MCP hedeflerini kullanan süreçleri belirleyin ve yukarıdaki ayarlardan uygun olanı `.env`'e ekleyin; yeni paketi açıp `spartaskctl update <sürüm>` çalıştırın.
 
 ## Sürüm çıkarma (geliştirici)
 

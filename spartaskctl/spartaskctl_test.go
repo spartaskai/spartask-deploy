@@ -58,7 +58,7 @@ func TestBuildEnvFillsTemplates(t *testing.T) {
 	if got, want := keysOf(mp.Bytes()), keysOf(mpTemplate); !slices.Equal(got, want) {
 		t.Fatalf("marketplace.env keys differ from template:\n got %v\nwant %v", got, want)
 	}
-	for _, key := range []string{"DB_PASSWORD", "SECRET_KEY", "WEB_AUTH_JWT_SECRET", "MARKETPLACE_DB_PASSWORD", "MARKETPLACE_PUBLIC_KEY", "MARKETPLACE_SSO_SHARED_SECRET"} {
+	for _, key := range []string{"DB_PASSWORD", "SECRET_KEY", "WEB_AUTH_JWT_SECRET", "NATS_AUTH_TOKEN", "MARKETPLACE_DB_PASSWORD", "MARKETPLACE_PUBLIC_KEY", "MARKETPLACE_SSO_SHARED_SECRET"} {
 		if len(env.Get(key)) < 32 {
 			t.Fatalf("%s not generated: %q", key, env.Get(key))
 		}
@@ -148,5 +148,50 @@ func TestDomainAndVersionValidation(t *testing.T) {
 	}
 	if !versionPattern.MatchString("1.2.3-rc.1") || versionPattern.MatchString("latest") {
 		t.Fatal("version pattern")
+	}
+}
+
+func TestOlderInstallationsGetNATSTokenOnce(t *testing.T) {
+	s := stack{dir: t.TempDir()}
+	env := parseEnv([]byte("# settings\nSECRET_KEY=keep-me\nNATS_AUTH_TOKEN=\n"))
+	if err := ensureGeneratedSecrets(s, env); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := readEnvFile(s.path(".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := saved.Get("NATS_AUTH_TOKEN")
+	if len(token) != 64 || saved.Get("SECRET_KEY") != "keep-me" {
+		t.Fatalf("unexpected .env after upgrade: token %q secret %q", token, saved.Get("SECRET_KEY"))
+	}
+	if err := ensureGeneratedSecrets(s, saved); err != nil {
+		t.Fatal(err)
+	}
+	again, err := readEnvFile(s.path(".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Get("NATS_AUTH_TOKEN") != token {
+		t.Fatal("an existing token must never change")
+	}
+}
+
+func TestComposeRequiresNATSTokenAndSeparatesMarketplace(t *testing.T) {
+	compose, err := os.ReadFile("../compose.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"\"--auth\", \"${NATS_AUTH_TOKEN:?", "SPARTASK_PLATFORM_CIDRS: ${SPARTASK_SUBNET"} {
+		if !strings.Contains(string(compose), want) {
+			t.Fatalf("compose.yml misses %q", want)
+		}
+	}
+	marketplace, err := os.ReadFile("../compose.marketplace.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(marketplace), "internal: true") || strings.Contains(string(marketplace), "networks: [spartask]") {
+		t.Fatal("marketplace database must be on its own internal network")
 	}
 }

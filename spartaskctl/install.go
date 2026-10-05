@@ -198,7 +198,7 @@ func buildEnv(s stack, o installOptions) (*envFile, *envFile, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	secrets := map[string]int{"DB_PASSWORD": 24, "SECRET_KEY": 32, "WEB_AUTH_JWT_SECRET": 32}
+	secrets := map[string]int{"DB_PASSWORD": 24, "SECRET_KEY": 32, "WEB_AUTH_JWT_SECRET": 32, "NATS_AUTH_TOKEN": 32}
 	for key, size := range secrets {
 		value, err := randomHex(size)
 		if err != nil {

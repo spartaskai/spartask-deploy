@@ -45,6 +45,9 @@ func runUpdate(ctx context.Context, s stack, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := ensureGeneratedSecrets(s, env); err != nil {
+		return err
+	}
 	previous, previousMP := env.Get("SPARTASK_VERSION"), env.Get("MARKETPLACE_VERSION")
 	if !*noBackup {
 		fmt.Println("Backup before the update...")
@@ -82,13 +85,44 @@ func runUpdate(ctx context.Context, s stack, args []string) error {
 }
 
 func runRestart(ctx context.Context, s stack) error {
-	if _, err := loadInstalledEnv(s); err != nil {
+	env, err := loadInstalledEnv(s)
+	if err != nil {
+		return err
+	}
+	if err := ensureGeneratedSecrets(s, env); err != nil {
 		return err
 	}
 	if err := s.compose(ctx, "up", "-d", "--remove-orphans"); err != nil {
 		return err
 	}
 	return s.waitHealthy(ctx, "api", 3*time.Minute)
+}
+
+// laterSecrets are generated settings added after the first release. Installations made before
+// get them on their next update/restart; existing values are never changed.
+var laterSecrets = map[string]int{"NATS_AUTH_TOKEN": 32}
+
+func ensureGeneratedSecrets(s stack, env *envFile) error {
+	changed := false
+	for key, size := range laterSecrets {
+		if env.Get(key) != "" {
+			continue
+		}
+		value, err := randomHex(size)
+		if err != nil {
+			return fmt.Errorf("generate %s: %w", key, err)
+		}
+		env.Set(key, value)
+		changed = true
+		fmt.Printf("Generated %s in .env.\n", key)
+	}
+	if !changed {
+		return nil
+	}
+	if err := env.Save(s.path(".env")); err != nil {
+		return fmt.Errorf("save generated secrets: %w", err)
+	}
+	return nil
 }
 
 func runStatus(ctx context.Context, s stack) error {
