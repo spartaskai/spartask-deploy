@@ -82,6 +82,53 @@ func (e *envFile) Set(key, value string) {
 	}
 }
 
+// has reports whether key is assigned (even to an empty value).
+func (e *envFile) has(key string) bool {
+	for _, line := range e.lines {
+		if lineKey(line) == key {
+			return true
+		}
+	}
+	return false
+}
+
+// keys lists the assigned keys in file order, each once.
+func (e *envFile) keys() []string {
+	var keys []string
+	seen := map[string]bool{}
+	for _, line := range e.lines {
+		if key := lineKey(line); key != "" && !seen[key] {
+			seen[key] = true
+			keys = append(keys, key)
+		}
+	}
+	return keys
+}
+
+// insertAfter inserts block after the last assignment of key, or at the end of the file when key
+// is empty or not assigned.
+func (e *envFile) insertAfter(key string, block []string) {
+	at := -1
+	if key != "" {
+		for i, line := range e.lines {
+			if lineKey(line) == key {
+				at = i
+			}
+		}
+	}
+	if at < 0 {
+		if n := len(e.lines); n > 0 && strings.TrimSpace(e.lines[n-1]) != "" {
+			e.lines = append(e.lines, "")
+		}
+		e.lines = append(e.lines, block...)
+		return
+	}
+	lines := make([]string, 0, len(e.lines)+len(block))
+	lines = append(lines, e.lines[:at+1]...)
+	lines = append(lines, block...)
+	e.lines = append(lines, e.lines[at+1:]...)
+}
+
 func (e *envFile) Bytes() []byte {
 	var buf bytes.Buffer
 	for _, line := range e.lines {

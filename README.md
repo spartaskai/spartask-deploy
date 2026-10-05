@@ -63,6 +63,8 @@ Private imajlar için `-registry-user` ile `read:packages` yetkili bir GitHub to
 ## Günlük işletim
 
 ```bash
+sudo ./spartaskctl config              # .env'i bu paketin şablonuyla karşılaştır: eksikleri ekle, şifreleri üret, doldurulacakları açıkla
+sudo ./spartaskctl config -check       # aynı rapor, dosyaya dokunmadan
 sudo ./spartaskctl status              # sürüm, container'lar, migration durumu
 sudo ./spartaskctl update 1.3.0        # yedek al → imajı çek → migrate → yeniden başlat → sağlık kontrolü
 sudo ./spartaskctl update 1.3.0 -marketplace-version 1.3.0
@@ -73,6 +75,12 @@ sudo ./spartaskctl restore backups/20261004T033000Z               # veriyi yedek
 sudo ./spartaskctl restore backups/20261004T033000Z -with-config  # yeni sunucuya taşıma: .env ve sertifikalar da
 ```
 
+- **Ayarlar (`.env`):** Her ayarın açıklaması ve kuralı `.env.example` şablonundadır. `spartaskctl config` sunucudaki `.env`'i şablonla karşılaştırır:
+  - yeni sürümle gelen ayarları açıklamalarıyla birlikte doğru bölüme ekler (mevcut değerlere dokunmaz, önceki dosyayı `.env.bak` olarak saklar),
+  - güvenle üretilebilen şifreleri üretir (`NATS_AUTH_TOKEN`, `SPARTASK_PLATFORM_API_TOKEN` ...). `SECRET_KEY` ve veritabanı şifreleri sadece ilk kurulumda üretilir; sonradan boşalırsa yedekten geri yüklenmelidir,
+  - **ZORUNLU** (boşsa sistem çalışmaz) ve **ÖNERİLEN** (boşsa ilgili özellik kapalı kalır) ayarları açıklamalarıyla listeler, geçersiz değerleri gösterir,
+  - sunucuya özel öneri verir: firma listesini gösterip `SPARTASK_PLATFORM_TENANT_IDS` için doğru kimliği, DigitalOcean'da domain Cloudflare arkasındaysa `SPARTASK_EGRESS_DENY_CIDRS` değerini önerir.
+  `update` ve `restart` aynı kontrolü otomatik yapar; zorunlu bir ayar eksikse hiçbir şeyi değiştirmeden durur. Rapor şifre değerlerini asla göstermez; bir değeri görmek için: `sudo grep ^SPARTASK_PLATFORM_API_TOKEN= .env`.
 - `update` başarısız olursa `.env` önceki sürüme döner; `spartaskctl restart` eski sürümü tekrar ayağa kaldırır. Başarısız bir migration dosyası kendi transaction'ında geri alınır.
 - Yedek içeriği: `spartask.dump` (pg_dump), `storage.tar.gz`, `config.tar.gz` (.env, sertifikalar), marketplace varsa `marketplace.dump` ve `marketplace-storage.tar.gz`. Yedekleri sunucu dışına da kopyalayın (DigitalOcean backup, S3, vb.).
 - Veritabanına bağlanmak: `sudo docker compose exec db psql -U spartask spartask`
@@ -84,7 +92,7 @@ sudo ./spartaskctl restore backups/20261004T033000Z -with-config  # yeni sunucuy
   1. Kendi firmanızda (ör. `https://spartask.spartask.ai`) API Dinleyici ile başlayan bir süreç oluşturun: yol `tenant-created`, güvenlik anahtarı `openssl rand -hex 24` çıktısı. Olay verisi `body.data` altındadır (`tenant_id`, `name`, `subdomain`, `admin_email`, `admin_full_name`, `signup_method`, `created_at`).
   2. `.env`: `PLATFORM_EVENTS_WEBHOOK_URL=https://spartask.spartask.ai/api/webhooks/tenant-created`, `PLATFORM_EVENTS_WEBHOOK_TOKEN=<aynı anahtar>`, ardından `spartaskctl restart`. URL boşken olaylar `public.platform_events` tablosunda bekler ve ayar yapılınca teslim edilir.
 - **Firmalara hatırlatıcılar:** Kendi firmanızda zamanlanmış bir süreç, firma listesini **platform API'sinden** alır (`GET /api/platform/tenants`). API yalnızca `SPARTASK_PLATFORM_TENANT_IDS` içindeki firmanın adresinde çalışır; başka her firmaya `401` döner.
-  1. `.env`: `SPARTASK_PLATFORM_TENANT_IDS=<kendi firmanızın public.tenants.id değeri>` ve süreçler için `SPARTASK_PLATFORM_API_TOKEN=<openssl rand -hex 32>`, ardından `spartaskctl restart`. Firma kimliği: `sudo docker compose exec db psql -U spartask spartask -c "SELECT id, subdomain FROM public.tenants"`.
+  1. `sudo ./spartaskctl config`: sunucudaki firmaları listeler ve `SPARTASK_PLATFORM_API_TOKEN`'ı üretir. Listeden kendi firmanızın `id`'sini `.env` içinde `SPARTASK_PLATFORM_TENANT_IDS=` satırına yazın, ardından `spartaskctl restart`. Token'ı görmek için: `sudo grep ^SPARTASK_PLATFORM_API_TOKEN= .env`.
   2. Süreçte **HTTP İstemcisi (WEBHOOK_SENDER)** düğümü: `GET https://<firmanız>.<domain>/api/platform/tenants?status=active`, başlık `X-Spartask-Platform-Token: <token>`. Yanıt `response_body.tenants` altında: `id`, `name`, `subdomain`, `status`, `contact_email`, `created_at`, `credit_balance`. Filtreler: `status` (active/suspended), `created_after` / `created_before` (RFC 3339), `limit` (en çok 500), `offset`.
   3. Web oturumuyla çağrı da mümkündür (sadece o firmanın ADMIN kullanıcıları).
 - **Platform veritabanı:** Firma veri kaynakları platform servislerine (`db`, `nats`, marketplace) bağlanamaz. Önceki sürümlerde önerilen `platform_reader` / `host=db` veri kaynağı artık reddedilir; bu kullanıcıyı silebilirsiniz: `DROP ROLE IF EXISTS platform_reader;`
@@ -101,7 +109,7 @@ Veri kaynakları (PostgreSQL, MySQL, SQL Server, modül migration'ları dahil), 
 - Sunucunun public IP'sini `SPARTASK_EGRESS_DENY_CIDRS`'e ekleyin — **yalnızca domain Cloudflare proxy'si arkasındaysa.** Aksi halde domain'in adresi de bu IP'dir ve firmaların kendi Spartask API'nize (ör. platform API'si) yaptığı çağrılar da engellenir.
 - Yerel (stdio) MCP sunucuları kaldırıldı: firma süreçleri sunucuda komut çalıştıramaz. Bu ayarı kullanan süreçler hata verir; HTTP MCP sunucusuna taşınmalıdır.
 - Engellenen hedef API'de `403 OUTBOUND_TARGET_DENIED` olarak döner.
-- NATS, `NATS_AUTH_TOKEN` ile korunur. `install` üretir; eski kurulumlarda `update`/`restart` eksik token'ı `.env`'e ekler (mevcut değer değişmez). Düz `docker compose` kullanıyorsanız önce `NATS_AUTH_TOKEN=$(openssl rand -hex 32)` ekleyin.
+- NATS, `NATS_AUTH_TOKEN` ile korunur. `install` üretir; eski kurulumlarda `config`/`update`/`restart` eksik token'ı `.env`'e ekler (mevcut değer değişmez). Düz `docker compose` kullanıyorsanız önce `NATS_AUTH_TOKEN=$(openssl rand -hex 32)` ekleyin.
 - Marketplace veritabanı yalnızca marketplace backend'iyle aynı internal ağdadır; engine (api/worker) marketplace ağlarına bağlı değildir.
 
 **Yükseltmeden önce:** iç ağdaki veritabanı/SMTP/Ollama/MCP hedeflerini kullanan süreçleri belirleyin ve yukarıdaki ayarlardan uygun olanı `.env`'e ekleyin; yeni paketi açıp `spartaskctl update <sürüm>` çalıştırın.
@@ -113,7 +121,9 @@ Veri kaynakları (PostgreSQL, MySQL, SQL Server, modül migration'ları dahil), 
 3. Marketplace için aynısı `spartask_marketplace`'te → `marketplace-api` ve `marketplace-web` imajları.
 4. Sunucuda: `sudo ./spartaskctl update 1.3.0`.
 
-Bu depo (`spartask-deploy`) değiştiğinde `git tag v1.x.y && git push origin v1.x.y` ile yeni kurulum paketi yayınlanır. Mevcut bir sunucuda compose/Caddy dosyalarını güncellemek için yeni paketi aynı klasöre açın (`.env`, `data/`, `certs/`, `backups/` dokunulmadan kalır) ve `spartaskctl restart` çalıştırın.
+Bu depo (`spartask-deploy`) değiştiğinde `git tag v1.x.y && git push origin v1.x.y` ile yeni kurulum paketi yayınlanır. Mevcut bir sunucuda compose/Caddy dosyalarını güncellemek için yeni paketi aynı klasöre açın (`.env`, `data/`, `certs/`, `backups/` dokunulmadan kalır) ve `spartaskctl config` ile yeni ayarları kontrol edip `spartaskctl restart` çalıştırın.
+
+**Yeni bir ortam değişkeni eklerken (geliştirici):** `spartask-deploy/.env.example` içine açıklamasıyla ve `#@` kuralıyla ekleyin (kuralların anlamı dosyanın başında). `spartask_backend`'deki `internal/envcheck` testi, kodun okuyup şablonda olmayan her değişkende hata verir; böylece sunucudaki `.env` ile proje ayrışmaz.
 
 ## Sorun giderme
 

@@ -3,6 +3,7 @@
 //	spartaskctl install [flags]            first installation (asks for domain, version, TLS ...)
 //	spartaskctl update <version>           backup, switch release, migrate, health check
 //	spartaskctl restart                    apply .env changes
+//	spartaskctl config [-check]            add new settings, generate secrets, report what is missing
 //	spartaskctl status                     containers and schema migrations
 //	spartaskctl logs [service]             follow logs
 //	spartaskctl backup                     database dumps + storage + config into backups/
@@ -37,6 +38,8 @@ Commands:
   update <version> [-marketplace-version V] [-no-backup]
                                  backup, switch release, apply migrations, health check
   restart                        apply .env changes (docker compose up -d)
+  config [-check]                compare .env with this package's template: add new settings,
+                                 generate secrets, explain what you still have to fill in
   status                         version, containers, schema migrations
   logs [service]                 follow logs (api, worker, scheduler, migrate, caddy, db ...)
   backup                         write backups/<timestamp>/ and keep the newest BACKUP_KEEP
@@ -80,6 +83,8 @@ func run(ctx context.Context, s stack, command string, args []string) error {
 		return runUpdate(ctx, s, args)
 	case "restart":
 		return runRestart(ctx, s)
+	case "config":
+		return runConfig(ctx, s, args)
 	case "status":
 		return runStatus(ctx, s)
 	case "logs":

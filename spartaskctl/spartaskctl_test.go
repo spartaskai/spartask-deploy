@@ -151,32 +151,6 @@ func TestDomainAndVersionValidation(t *testing.T) {
 	}
 }
 
-func TestOlderInstallationsGetNATSTokenOnce(t *testing.T) {
-	s := stack{dir: t.TempDir()}
-	env := parseEnv([]byte("# settings\nSECRET_KEY=keep-me\nNATS_AUTH_TOKEN=\n"))
-	if err := ensureGeneratedSecrets(s, env); err != nil {
-		t.Fatal(err)
-	}
-	saved, err := readEnvFile(s.path(".env"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	token := saved.Get("NATS_AUTH_TOKEN")
-	if len(token) != 64 || saved.Get("SECRET_KEY") != "keep-me" {
-		t.Fatalf("unexpected .env after upgrade: token %q secret %q", token, saved.Get("SECRET_KEY"))
-	}
-	if err := ensureGeneratedSecrets(s, saved); err != nil {
-		t.Fatal(err)
-	}
-	again, err := readEnvFile(s.path(".env"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if again.Get("NATS_AUTH_TOKEN") != token {
-		t.Fatal("an existing token must never change")
-	}
-}
-
 func TestComposeRequiresNATSTokenAndSeparatesMarketplace(t *testing.T) {
 	compose, err := os.ReadFile("../compose.yml")
 	if err != nil {

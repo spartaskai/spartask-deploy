@@ -120,6 +120,13 @@ func runInstall(ctx context.Context, s stack, args []string) error {
 		}
 	}
 	printInstallSummary(o, env)
+	// Settings the operator still has to fill in, with their explanations.
+	cfg, err := checkInstalledConfig(s)
+	if err != nil {
+		return err
+	}
+	advise(ctx, cfg, defaultAdvisorProbes(s))
+	printReport(os.Stdout, cfg.results(), true, true)
 	return nil
 }
 
@@ -198,13 +205,9 @@ func buildEnv(s stack, o installOptions) (*envFile, *envFile, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	secrets := map[string]int{"DB_PASSWORD": 24, "SECRET_KEY": 32, "WEB_AUTH_JWT_SECRET": 32, "NATS_AUTH_TOKEN": 32}
-	for key, size := range secrets {
-		value, err := randomHex(size)
-		if err != nil {
-			return nil, nil, err
-		}
-		env.Set(key, value)
+	rules, err := readRules(s.path(".env.example"))
+	if err != nil {
+		return nil, nil, err
 	}
 	env.Set("SPARTASK_DOMAIN", o.domain)
 	env.Set("SPARTASK_VERSION", o.version)
@@ -224,10 +227,18 @@ func buildEnv(s stack, o installOptions) (*envFile, *envFile, error) {
 		env.Set("MARKETPLACE_ALLOWED_ORIGINS", url)
 	}
 	if !o.marketplace {
+		// Secrets marked "generate" in the template (database password, SECRET_KEY, tokens ...).
+		if _, err := syncEnv(".env", env, rules, nil, true); err != nil {
+			return nil, nil, err
+		}
 		return env, nil, nil
 	}
 
 	mp, err := readEnvFile(s.path("marketplace.env.example"))
+	if err != nil {
+		return nil, nil, err
+	}
+	mpRules, err := readRules(s.path("marketplace.env.example"))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -236,23 +247,16 @@ func buildEnv(s stack, o installOptions) (*envFile, *envFile, error) {
 		return nil, nil, err
 	}
 	mp.Set("ED25519_PRIVATE_KEY", private)
-	values := map[string]int{"JWT_SECRET": 32, "ENGINE_API_KEY": 24, "PUBLISH_API_KEY": 24, "SSO_SHARED_SECRET": 32}
-	for key, size := range values {
-		value, err := randomHex(size)
-		if err != nil {
-			return nil, nil, err
-		}
-		mp.Set(key, value)
-	}
-	dbPassword, err := randomHex(24)
+	// The SSO secret is shared by .env and marketplace.env, so it is generated here once.
+	ssoSecret, err := randomHex(32)
 	if err != nil {
 		return nil, nil, err
 	}
+	mp.Set("SSO_SHARED_SECRET", ssoSecret)
 	url := "https://" + o.marketplaceDomain
 	env.Set("COMPOSE_FILE", "compose.yml:compose.marketplace.yml")
 	env.Set("MARKETPLACE_DOMAIN", o.marketplaceDomain)
 	env.Set("MARKETPLACE_VERSION", o.marketplaceVer)
-	env.Set("MARKETPLACE_DB_PASSWORD", dbPassword)
 	env.Set("MARKETPLACE_PUBLIC_KEY", public)
 	env.Set("SPARTASK_MARKETPLACE_URL", url)
 	env.Set("MARKETPLACE_API_URL", url)
@@ -260,6 +264,12 @@ func buildEnv(s stack, o installOptions) (*envFile, *envFile, error) {
 	env.Set("MARKETPLACE_SSO_ENABLED", "true")
 	env.Set("MARKETPLACE_SSO_SHARED_SECRET", mp.Get("SSO_SHARED_SECRET"))
 	env.Set("MARKETPLACE_SSO_CALLBACK_URL", url+"/auth/spartask/callback")
+	if _, err := syncEnv(".env", env, rules, nil, true); err != nil {
+		return nil, nil, err
+	}
+	if _, err := syncEnv("marketplace.env", mp, mpRules, env, true); err != nil {
+		return nil, nil, err
+	}
 	return env, mp, nil
 }
 
