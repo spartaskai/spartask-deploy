@@ -86,7 +86,7 @@ func TestPrepareConfigUpgradesOlderInstallation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"NATS_AUTH_TOKEN", "SPARTASK_PLATFORM_API_TOKEN"} {
+	for _, key := range []string{"NATS_AUTH_TOKEN", "SPARTASK_PLATFORM_API_TOKEN", "BACKUP_ENCRYPTION_KEY"} {
 		if len(saved.Get(key)) != 64 || env.Get(key) != saved.Get(key) {
 			t.Fatalf("%s not generated: %q", key, saved.Get(key))
 		}

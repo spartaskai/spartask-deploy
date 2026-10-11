@@ -56,7 +56,7 @@ sudo ./spartaskctl install -domain spartask.firma.com.tr -cert /root/firma.crt -
 sudo ./spartaskctl install -domain spartask.local -tls internal
 ```
 
-> **Önemli:** `.env` içindeki `SECRET_KEY`, veri kaynağı / mail sunucusu / yapay zeka şifrelerini şifreler. Kurulumdan sonra `.env`'in bir kopyasını şifre yöneticisine koyun; bu anahtar olmadan yedekteki şifreler çözülemez.
+> **Önemli:** `.env` içindeki `SECRET_KEY`, veri kaynağı / mail sunucusu / yapay zeka şifrelerini; `BACKUP_ENCRYPTION_KEY` ise yedekleri şifreler. Kurulumdan sonra `.env`'in bir kopyasını şifre yöneticisine koyun; bu anahtarlar olmadan yedekler açılamaz.
 
 Private imajlar için `-registry-user` ile `read:packages` yetkili bir GitHub token'ı sorulur (veya önceden `docker login ghcr.io`).
 
@@ -73,6 +73,8 @@ sudo ./spartaskctl restart             # .env değişikliklerini uygula
 sudo ./spartaskctl backup              # backups/<zaman>/ altına yedek (en yeni BACKUP_KEEP adet tutulur)
 sudo ./spartaskctl restore backups/20261004T033000Z               # veriyi yedekten geri yükle
 sudo ./spartaskctl restore backups/20261004T033000Z -with-config  # yeni sunucuya taşıma: .env ve sertifikalar da
+# yeni sunucuda yedeğin anahtarı henüz .env'de yoksa şifre yöneticisinden verin (verilmezse sorulur):
+sudo BACKUP_ENCRYPTION_KEY=... ./spartaskctl restore backups/20261004T033000Z -with-config
 ```
 
 - **Ayarlar (`.env`):** Her ayarın açıklaması ve kuralı `.env.example` şablonundadır. `spartaskctl config` sunucudaki `.env`'i şablonla karşılaştırır:
@@ -82,7 +84,7 @@ sudo ./spartaskctl restore backups/20261004T033000Z -with-config  # yeni sunucuy
   - sunucuya özel öneri verir: firma listesini gösterip `SPARTASK_PLATFORM_TENANT_IDS` için doğru kimliği, DigitalOcean'da domain Cloudflare arkasındaysa `SPARTASK_EGRESS_DENY_CIDRS` değerini önerir.
   `update` ve `restart` aynı kontrolü otomatik yapar; zorunlu bir ayar eksikse hiçbir şeyi değiştirmeden durur. Rapor şifre değerlerini asla göstermez; bir değeri görmek için: `sudo grep ^SPARTASK_PLATFORM_API_TOKEN= .env`.
 - `update` başarısız olursa `.env` önceki sürüme döner; `spartaskctl restart` eski sürümü tekrar ayağa kaldırır. Başarısız bir migration dosyası kendi transaction'ında geri alınır.
-- Yedek içeriği: `spartask.dump` (pg_dump), `storage.tar.gz`, `config.tar.gz` (.env, sertifikalar), marketplace varsa `marketplace.dump` ve `marketplace-storage.tar.gz`. Yedekleri sunucu dışına da kopyalayın (DigitalOcean backup, S3, vb.).
+- Yedek içeriği: `spartask.dump` (pg_dump), `storage.tar.gz`, `config.tar.gz` (.env, sertifikalar), marketplace varsa `marketplace.dump` ve `marketplace-storage.tar.gz`. Dosyalar `BACKUP_ENCRYPTION_KEY` ile şifrelenir (AES-256-GCM) ve `.enc` uzantısı alır; anahtar `config`/`update` ile üretilir. Anahtar boşsa yedek şifresiz alınır ve uyarı verilir. Şifreli yedekleri sunucu dışına da kopyalayın (DigitalOcean backup, S3, vb.); eski şifresiz yedekler de geri yüklenebilir.
 - Veritabanına bağlanmak: `sudo docker compose exec db psql -U spartask spartask`
 
 ## Kayıt ve platform süreçleri
