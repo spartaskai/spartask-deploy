@@ -25,7 +25,6 @@ type installOptions struct {
 	tls               string // "files" or "internal"
 	certFile, keyFile string
 	cloudflare        bool
-	geminiKey         string
 	registryUser      string
 	marketplace       bool
 	marketplaceDomain string
@@ -168,10 +167,6 @@ func askInstallOptions(p *prompter, o *installOptions) error {
 	default:
 		return fmt.Errorf(`-tls must be "files" or "internal"`)
 	}
-	// Optional; with -y it stays empty and can be set in .env later.
-	if o.geminiKey, err = p.askSecret("Gemini API key"); err != nil {
-		return err
-	}
 	if o.marketplace {
 		def := o.marketplaceDomain
 		if def == "" {
@@ -211,7 +206,6 @@ func buildEnv(s stack, o installOptions) (*envFile, *envFile, error) {
 	}
 	env.Set("SPARTASK_DOMAIN", o.domain)
 	env.Set("SPARTASK_VERSION", o.version)
-	env.Set("GEMINI_API_KEY", o.geminiKey)
 	if o.tls == "internal" {
 		env.Set("SPARTASK_TLS", "internal")
 	} else {
@@ -351,9 +345,6 @@ func printInstallSummary(o installOptions, env *envFile) {
 	fmt.Println()
 	fmt.Println("  - Store a copy of .env (SECRET_KEY) in a password manager; backups cannot be decrypted without it.")
 	fmt.Println("  - Mail, Google sign-in and other settings: edit .env, then run: spartaskctl restart")
-	if env.Get("GEMINI_API_KEY") == "" {
-		fmt.Println("  - GEMINI_API_KEY is empty: AI features stay off until it is set in .env.")
-	}
 	if o.marketplace {
 		fmt.Println("  - CI publishing key (GitHub org secret MARKETPLACE_PUBLISH_KEY): PUBLISH_API_KEY in marketplace.env")
 	}

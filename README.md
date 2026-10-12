@@ -40,7 +40,7 @@ sudo nano certs/key.pem      # "Private Key" içeriği
 sudo ./spartaskctl install
 ```
 
-`install` şunları sorar: domain, sürüm, TLS modu, Cloudflare kullanımı, (opsiyonel) Gemini anahtarı ve günlük yedek görevi. Tüm şifreleri kendisi üretir, imajları çeker, migration'ları uygular ve API sağlıklı olana kadar bekler.
+`install` şunları sorar: domain, sürüm, TLS modu, Cloudflare kullanımı ve günlük yedek görevi. Tüm şifreleri kendisi üretir, imajları çeker, migration'ları uygular ve API sağlıklı olana kadar bekler.
 
 Örnekler:
 
@@ -102,6 +102,7 @@ sudo BACKUP_ENCRYPTION_KEY=... ./spartaskctl restore backups/20261004T033000Z -w
   1. `sudo ./spartaskctl config`: sunucudaki firmaları listeler ve `SPARTASK_PLATFORM_API_TOKEN`'ı üretir. Listeden kendi firmanızın `id`'sini `.env` içinde `SPARTASK_PLATFORM_TENANT_IDS=` satırına yazın, ardından `spartaskctl restart`. Token'ı görmek için: `sudo grep ^SPARTASK_PLATFORM_API_TOKEN= .env`.
   2. Süreçte **HTTP İstemcisi (WEBHOOK_SENDER)** düğümü: `GET https://<firmanız>.<domain>/api/platform/tenants?status=active`, başlık `X-Spartask-Platform-Token: <token>`. Yanıt `response_body.tenants` altında: `id`, `name`, `subdomain`, `status`, `contact_email`, `created_at`, `credit_balance`. Filtreler: `status` (active/suspended), `created_after` / `created_before` (RFC 3339), `limit` (en çok 500), `offset`.
   3. Web oturumuyla çağrı da mümkündür (sadece o firmanın ADMIN kullanıcıları).
+- **Yapay zeka:** Platform genelinde bir yapay zeka anahtarı yoktur. Her firma yapay zeka adımları ve süreç asistanı için **Altyapı > AI Provider** ekranından kendi sağlayıcısını ekleyip varsayılan yapar; firma verisi yalnızca o sağlayıcıya gider. Eski sürümlerden kalan `GEMINI_API_KEY`, `OPENAI_API_KEY` ve `GEMINI_MODEL` artık okunmaz; `.env`'den silebilirsiniz (`spartaskctl config` bunları "şablonda olmayan ayarlar" olarak listeler, API açılışta uyarı yazar).
 - **Platform veritabanı:** Firma veri kaynakları platform servislerine (`db`, `nats`, marketplace) bağlanamaz. Önceki sürümlerde önerilen `platform_reader` / `host=db` veri kaynağı artık reddedilir; bu kullanıcıyı silebilirsiniz: `DROP ROLE IF EXISTS platform_reader;`
 
 ## Firma bağlantılarında ağ güvenliği

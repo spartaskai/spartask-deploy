@@ -40,7 +40,7 @@ func TestSecretFileIsPrivate(t *testing.T) {
 func TestBuildEnvFillsTemplates(t *testing.T) {
 	s := stack{dir: ".."}
 	env, mp, err := buildEnv(s, installOptions{domain: "spartask.ai", version: "1.2.3", tls: "files", cloudflare: true,
-		marketplace: true, marketplaceDomain: "marketplace.spartask.ai", marketplaceVer: "1.2.3", geminiKey: "g"})
+		marketplace: true, marketplaceDomain: "marketplace.spartask.ai", marketplaceVer: "1.2.3"})
 	if err != nil {
 		t.Fatal(err)
 	}
