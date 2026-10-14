@@ -84,7 +84,7 @@ sudo BACKUP_ENCRYPTION_KEY=... ./spartaskctl restore backups/20261004T033000Z -w
   - sunucuya özel öneri verir: firma listesini gösterip `SPARTASK_PLATFORM_TENANT_IDS` için doğru kimliği, DigitalOcean'da domain Cloudflare arkasındaysa `SPARTASK_EGRESS_DENY_CIDRS` değerini önerir.
   `update` ve `restart` aynı kontrolü otomatik yapar; zorunlu bir ayar eksikse hiçbir şeyi değiştirmeden durur. Rapor şifre değerlerini asla göstermez; bir değeri görmek için: `sudo grep ^SPARTASK_PLATFORM_API_TOKEN= .env`.
 - `update` başarısız olursa `.env` önceki sürüme döner; `spartaskctl restart` eski sürümü tekrar ayağa kaldırır. Başarısız bir migration dosyası kendi transaction'ında geri alınır.
-- Yedek içeriği: `spartask.dump` (pg_dump), `storage.tar.gz`, `config.tar.gz` (.env, sertifikalar), marketplace varsa `marketplace.dump` ve `marketplace-storage.tar.gz`. Dosyalar `BACKUP_ENCRYPTION_KEY` ile şifrelenir (AES-256-GCM) ve `.enc` uzantısı alır; anahtar `config`/`update` ile üretilir. Anahtar boşsa yedek şifresiz alınır ve uyarı verilir. Şifreli yedekleri sunucu dışına da kopyalayın (DigitalOcean backup, S3, vb.); eski şifresiz yedekler de geri yüklenebilir.
+- Yedek içeriği: `spartask.dump` (pg_dump), `storage.tar.gz`, `config.tar.gz` (.env, sertifikalar), marketplace varsa `marketplace.dump` ve `marketplace-storage.tar.gz`. Dosyalar `BACKUP_ENCRYPTION_KEY` ile şifrelenir (AES-256-GCM) ve `.enc` uzantısı alır; anahtar `config`/`update` ile üretilir. Anahtar boşsa yedek şifresiz alınır ve uyarı verilir. Şifreli yedekleri sunucu dışına da kopyalayın (barındırma firmasının yedek alanı, S3 uyumlu depolama vb.; kişisel veri içerdiği için mümkünse Türkiye'de); eski şifresiz yedekler de geri yüklenebilir.
 - Veritabanına bağlanmak: `sudo docker compose exec db psql -U spartask spartask`
 
 ## Kayıt ve platform süreçleri
@@ -141,4 +141,4 @@ Bu depo (`spartask-deploy`) değiştiğinde `git tag v1.x.y && git push origin v
 | API açılmıyor | `spartaskctl logs migrate` ve `spartaskctl logs api` — `SECRET_KEY`/`WEB_AUTH_JWT_SECRET` eksikse API başlamaz |
 | Tarayıcıda sertifika hatası | `certs/cert.pem` domain ve `*.domain`'i kapsamalı; Cloudflare kullanılıyorsa SSL modu **Full (strict)** |
 | Firma adresi açılmıyor | DNS'te `*` kaydı var mı, `SPARTASK_DOMAIN` doğru mu |
-| Giden mail gitmiyor | DigitalOcean 25, 465 ve 587 portlarını engeller; mail servisinin 2525 portunu kullanın (ör. Brevo smtp-relay.brevo.com:2525) |
+| Giden mail gitmiyor | Bazı sunucu sağlayıcıları 25, 465 ve 587 portlarını engeller; mail servisinin 2525 portunu kullanın (ör. Brevo smtp-relay.brevo.com:2525) |
