@@ -71,6 +71,7 @@ sudo ./spartaskctl update 1.3.0 -marketplace-version 1.3.0
 sudo ./spartaskctl logs api            # canlı loglar (api, worker, scheduler, migrate, caddy, db ...)
 sudo ./spartaskctl restart             # .env değişikliklerini uygula
 sudo ./spartaskctl backup              # backups/<zaman>/ altına yedek (en yeni BACKUP_KEEP adet tutulur)
+sudo ./spartaskctl demo apply demo/demo-mobilya.json  # demo şirketini kur veya sıfırla (aşağıda)
 sudo ./spartaskctl restore backups/20261004T033000Z               # veriyi yedekten geri yükle
 sudo ./spartaskctl restore backups/20261004T033000Z -with-config  # yeni sunucuya taşıma: .env ve sertifikalar da
 # yeni sunucuda yedeğin anahtarı henüz .env'de yoksa şifre yöneticisinden verin (verilmezse sorulur):
@@ -86,6 +87,28 @@ sudo BACKUP_ENCRYPTION_KEY=... ./spartaskctl restore backups/20261004T033000Z -w
 - `update` başarısız olursa `.env` önceki sürüme döner; `spartaskctl restart` eski sürümü tekrar ayağa kaldırır. Başarısız bir migration dosyası kendi transaction'ında geri alınır.
 - Yedek içeriği: `spartask.dump` (pg_dump), `storage.tar.gz`, `config.tar.gz` (.env, sertifikalar), marketplace varsa `marketplace.dump` ve `marketplace-storage.tar.gz`. Dosyalar `BACKUP_ENCRYPTION_KEY` ile şifrelenir (AES-256-GCM) ve `.enc` uzantısı alır; anahtar `config`/`update` ile üretilir. Anahtar boşsa yedek şifresiz alınır ve uyarı verilir. Şifreli yedekleri sunucu dışına da kopyalayın (barındırma firmasının yedek alanı, S3 uyumlu depolama vb.; kişisel veri içerdiği için mümkünse Türkiye'de); eski şifresiz yedekler de geri yüklenebilir.
 - Veritabanına bağlanmak: `sudo docker compose exec db psql -U spartask spartask`
+
+## Demo şirketi
+
+Tanıtım, Pioneer görüşmeleri ve mağaza incelemeleri için demo şirketler tek bir JSON dosyasından kurulur. `spartaskctl demo apply` dosyadaki şirketi, rolleri, kullanıcıları ve veri kaynaklarını oluşturur; şirket zaten varsa onu dosyadaki hale getirir: şifreler sıfırlanır, eski oturumlar kapanır, kullanıcıların rolleri tam olarak dosyadakiler olur, ADMIN olmayanların 2FA'sı kaldırılır (ADMIN için 2FA zorunludur, telefonundaki kalır), veri kaynakları adıyla eşleştirilip güncellenir. Dosyada olmayan kullanıcılara dokunulmaz, raporda listelenir. Modüller (ör. CRM) ve örnek verileri bu dosyanın parçası değildir: şirkete müşterinin yaptığı gibi marketplace'ten kurulur, örnek veri modülün kendi "Örnek veriyi yükle" süreciyle yüklenir.
+
+```bash
+cp demo/demo-mobilya.example.json demo/demo-mobilya.json   # e-postaları ve veritabanını düzenleyin
+sudo ./spartaskctl demo check demo/demo-mobilya.json       # doğrula, hiçbir şey yazma
+sudo ./spartaskctl demo apply demo/demo-mobilya.json
+```
+
+- **Güvenlik:** Yalnızca adresi `demo-` ile başlayan şirketler oluşturulur veya değiştirilir; `SPARTASK_PLATFORM_TENANT_IDS` içindeki şirketler reddedilir. Gerçek bir müşteri şirketi bu komutla değiştirilemez.
+- **Şifreler dosyada durmaz:** `"env:AD"` yazılan değerler önce spartaskctl'in ortamından, yoksa `.env`'den okunur (`DEMO_ADMIN_PASSWORD=...`, `DEMO_PASSWORD=...`, `DEMO_DB_HOST=...`, `DEMO_DB_PASSWORD=...`). Kullanıcı şifreleri en az 12 karakter olmalıdır. `spartaskctl config` bu satırları "şablonda olmayan ayarlar" olarak listeler; bu beklenen bir durumdur.
+- **Yeni şirket** normal kayıt servisiyle açılır (şema, migration'lar, ilk ADMIN, `tenant.created` olayı); e-posta doğrulaması ve kayıt daveti gerekmez. Dosyadaki ilk ADMIN kullanıcı şirketi açan yöneticidir.
+- **Veri kaynağı:** Bağlantı kurulumda test edilmez. Uzak bir PostgreSQL için `ssl_mode: require` kullanın; sunucuda SSL yoksa `disable` yazın.
+- **Her gece sıfırlama** (ör. Google Play inceleme hesabı). Önce şirket ve kullanıcılar, ardından (şirket içinde zamanlanmış) örnek veri süreci çalışır:
+
+  ```cron
+  45 2 * * * cd /opt/spartask && ./spartaskctl demo apply demo/play-review.json >> /var/log/spartask-demo.log 2>&1
+  ```
+
+- Komut api container'ı içindeki `/app/bin/spartask-admin` ile çalışır; container çalışır durumda olmalıdır.
 
 ## Kayıt ve platform süreçleri
 

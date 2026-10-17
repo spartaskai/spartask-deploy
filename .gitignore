@@ -12,3 +12,7 @@ mobile/*.apk
 /spartaskctl/spartaskctl.exe
 /spartaskctl-*
 /dist/
+
+# Demo company files with real addresses (the example stays)
+demo/*.json
+!demo/*.example.json

@@ -8,6 +8,7 @@
 //	spartaskctl logs [service]             follow logs
 //	spartaskctl backup                     database dumps + storage + config into backups/
 //	spartaskctl restore <backups/TS>       replace the data with a backup
+//	spartaskctl demo apply <file.json>     create or reset a demo company (users, roles, data sources)
 package main
 
 import (
@@ -45,6 +46,8 @@ Commands:
   backup                         write backups/<timestamp>/ and keep the newest BACKUP_KEEP
   restore <backups/TS> [-with-config] [-yes]
                                  replace databases and storage with a backup
+  demo apply|check <file.json>   create a demo company or reset it to the file: users,
+                                 roles, data sources ("env:NAME" values come from .env)
   version                        print the spartaskctl version
 `
 
@@ -93,6 +96,8 @@ func run(ctx context.Context, s stack, command string, args []string) error {
 		return runBackup(ctx, s)
 	case "restore":
 		return runRestore(ctx, s, args)
+	case "demo":
+		return runDemo(ctx, s, args)
 	case "version":
 		fmt.Println(toolVersion)
 		return nil

@@ -31,7 +31,7 @@ jobs:
         run: |
           set -eu
           mkdir -p dist
-          files="compose.yml compose.marketplace.yml caddy .env.example marketplace.env.example README.md"
+          files="compose.yml compose.marketplace.yml caddy demo .env.example marketplace.env.example README.md"
           for target in linux/amd64 linux/arm64 windows/amd64; do
             os="${target%/*}"; arch="${target#*/}"; name="spartask-deploy-$os-$arch"
             stage="dist/$name/spartask-deploy"; mkdir -p "$stage"
