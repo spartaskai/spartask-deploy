@@ -1,15 +1,53 @@
 {
-  "tenant": { "id": "demo-mobilya", "name": "Demo Mobilya" },
+  "tenant": {
+    "id": "demo-mobilya",
+    "name": "Demo Mobilya"
+  },
   "roles": [
-    { "name": "sales_manager", "description": "Satış müdürü: indirim ve teklif onayları" },
-    { "name": "finance", "description": "Finans: fatura onayları" }
+    {
+      "name": "sales_manager",
+      "description": "Satış müdürü: indirim ve teklif onayları"
+    },
+    {
+      "name": "finance",
+      "description": "Finans: fatura onayları"
+    }
   ],
   "users": [
-    { "email": "mustafakozan+can@spartask.ai", "name": "Can Yılmaz", "password": "env:DEMO_ADMIN_PASSWORD", "roles": ["ADMIN"] },
-    { "email": "mustafakozan+ayse@spartask.ai", "name": "Ayşe Demir", "password": "env:DEMO_PASSWORD", "roles": ["sales_manager"] },
-    { "email": "mustafakozan+mert@spartask.ai", "name": "Mert Kaya", "password": "env:DEMO_PASSWORD" },
-    { "email": "mustafakozan+zeynep@spartask.ai", "name": "Zeynep Arslan", "password": "env:DEMO_PASSWORD", "roles": ["finance"] },
-    { "email": "mustafakozan+emre@spartask.ai", "name": "Emre Şahin", "password": "env:DEMO_PASSWORD" }
+    {
+      "email": "demo+can@spartask.ai",
+      "name": "Can Yılmaz",
+      "password": "env:DEMO_ADMIN_PASSWORD",
+      "roles": [
+        "ADMIN"
+      ]
+    },
+    {
+      "email": "demo+ayse@spartask.ai",
+      "name": "Ayşe Demir",
+      "password": "env:DEMO_PASSWORD",
+      "roles": [
+        "sales_manager"
+      ]
+    },
+    {
+      "email": "demo+mert@spartask.ai",
+      "name": "Mert Kaya",
+      "password": "env:DEMO_PASSWORD"
+    },
+    {
+      "email": "demo+zeynep@spartask.ai",
+      "name": "Zeynep Arslan",
+      "password": "env:DEMO_PASSWORD",
+      "roles": [
+        "finance"
+      ]
+    },
+    {
+      "email": "demo+emre@spartask.ai",
+      "name": "Emre Şahin",
+      "password": "env:DEMO_PASSWORD"
+    }
   ],
   "data_sources": [
     {

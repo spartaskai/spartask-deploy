@@ -99,7 +99,9 @@ sudo ./spartaskctl demo apply demo/demo-mobilya.json
 ```
 
 - **Güvenlik:** Yalnızca adresi `demo-` ile başlayan şirketler oluşturulur veya değiştirilir; `SPARTASK_PLATFORM_TENANT_IDS` içindeki şirketler reddedilir. Gerçek bir müşteri şirketi bu komutla değiştirilemez.
-- **Şifreler dosyada durmaz:** `"env:AD"` yazılan değerler önce spartaskctl'in ortamından, yoksa `.env`'den okunur (`DEMO_ADMIN_PASSWORD=...`, `DEMO_PASSWORD=...`, `DEMO_DB_HOST=...`, `DEMO_DB_PASSWORD=...`). Kullanıcı şifreleri en az 12 karakter olmalıdır. `spartaskctl config` bu satırları "şablonda olmayan ayarlar" olarak listeler; bu beklenen bir durumdur.
+- **Şifreler dosyada durmaz:** `"env:AD"` yazılan değerler önce spartaskctl'in ortamından, yoksa `.env`'den okunur. Bu adları demo dosyası belirler, `.env.example` şablonunda yer almazlar; bu yüzden `spartaskctl config` onları üretmez ve "şablonda olmayan ayarlar" olarak listeler (beklenen durum).
+  - **Kullanıcı şifreleri** (`users[].password`, ör. `DEMO_ADMIN_PASSWORD`, `DEMO_PASSWORD`) `.env`'de yoksa `demo apply` rastgele üretip `.env`'in sonuna ekler (önceki dosya `.env.bak`), sonraki çalıştırmalar aynı değeri kullanır. `demo check` hiçbir şey yazmaz, yalnızca üretileceğini söyler. Görmek için: `sudo grep ^DEMO_ .env`. Kendiniz belirlemek isterseniz önceden `.env`'e yazın (en az 12 karakter).
+  - **Veri kaynağı değerleri** (`DEMO_DB_HOST`, `DEMO_DB_PASSWORD`) dışarıdaki bir veritabanına aittir, üretilemez: `.env`'e elle yazılır, eksikse komut hiçbir şeyi değiştirmeden durur. Kullanıcı şifresiyle aynı değişken bir veri kaynağında da kullanılıyorsa o değişken de üretilmez.
 - **Yeni şirket** normal kayıt servisiyle açılır (şema, migration'lar, ilk ADMIN, `tenant.created` olayı); e-posta doğrulaması ve kayıt daveti gerekmez. Dosyadaki ilk ADMIN kullanıcı şirketi açan yöneticidir.
 - **Veri kaynağı:** Bağlantı kurulumda test edilmez. Uzak bir PostgreSQL için `ssl_mode: require` kullanın; sunucuda SSL yoksa `disable` yazın.
 - **Her gece sıfırlama** (ör. Google Play inceleme hesabı). Önce şirket ve kullanıcılar, ardından (şirket içinde zamanlanmış) örnek veri süreci çalışır:
