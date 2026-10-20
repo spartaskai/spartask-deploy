@@ -72,6 +72,7 @@ sudo ./spartaskctl logs api            # canlı loglar (api, worker, scheduler, 
 sudo ./spartaskctl restart             # .env değişikliklerini uygula
 sudo ./spartaskctl backup              # backups/<zaman>/ altına yedek (en yeni BACKUP_KEEP adet tutulur)
 sudo ./spartaskctl demo apply demo/demo-mobilya.json  # demo şirketini kur veya sıfırla (aşağıda)
+sudo ./spartaskctl system-processes sync  # sistem süreçlerini (Çalışanlar, Format Profilleri) tüm şirketlerde şimdi güncelle
 sudo ./spartaskctl restore backups/20261004T033000Z               # veriyi yedekten geri yükle
 sudo ./spartaskctl restore backups/20261004T033000Z -with-config  # yeni sunucuya taşıma: .env ve sertifikalar da
 # yeni sunucuda yedeğin anahtarı henüz .env'de yoksa şifre yöneticisinden verin (verilmezse sorulur):

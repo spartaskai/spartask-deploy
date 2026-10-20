@@ -48,6 +48,8 @@ Commands:
                                  replace databases and storage with a backup
   demo apply|check <file.json>   create a demo company or reset it to the file: users,
                                  roles, data sources ("env:NAME" values come from .env)
+  system-processes sync          publish the system processes (employees, format profiles)
+                                 to every company now; the API also does it when it starts
   version                        print the spartaskctl version
 `
 
@@ -98,6 +100,8 @@ func run(ctx context.Context, s stack, command string, args []string) error {
 		return runRestore(ctx, s, args)
 	case "demo":
 		return runDemo(ctx, s, args)
+	case "system-processes":
+		return runSystemProcesses(ctx, s, args)
 	case "version":
 		fmt.Println(toolVersion)
 		return nil
