@@ -46,7 +46,9 @@ sudo ./spartaskctl install
 
 ```bash
 # Platform sunucusu (spartask.ai, Cloudflare arkasında, marketplace dahil, imajlar private)
-sudo ./spartaskctl install -domain spartask.ai -cloudflare -with-marketplace -registry-user <github-kullanıcısı>
+# -marketplace-signing-key: şifre yöneticisindeki ED25519_PRIVATE_KEY'i içeren dosya (yeni anahtar üretilmez)
+sudo ./spartaskctl install -domain spartask.ai -cloudflare -with-marketplace -marketplace-signing-key /root/marketplace.key \
+     -registry-user <github-kullanıcısı>
 
 # On-premise müşteri (kendi sertifikası, merkezi marketplace'e bağlı)
 sudo ./spartaskctl install -domain spartask.firma.com.tr -cert /root/firma.crt -key /root/firma.key \

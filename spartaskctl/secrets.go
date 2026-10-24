@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -18,14 +19,42 @@ func randomHex(n int) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// marketplaceKeys returns the marketplace license signing key (ED25519_PRIVATE_KEY) and the
-// public key the engines verify licenses with (MARKETPLACE_PUBLIC_KEY), both standard base64.
-func marketplaceKeys() (private, public string, err error) {
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		return "", "", fmt.Errorf("generate marketplace signing key: %w", err)
+// readMarketplaceSigningKey reads the marketplace license signing key from a file: the base64
+// Ed25519 private key (64 bytes) or seed (32 bytes), bare or as an ED25519_PRIVATE_KEY= line. It
+// returns the private key and its public key, standard base64. The key is never generated here:
+// SparTask releases trust only the marketplace keys built into them.
+func readMarketplaceSigningKey(path string) (private, public string, err error) {
+	if strings.TrimSpace(path) == "" {
+		return "", "", fmt.Errorf("the marketplace needs its signing key: pass -marketplace-signing-key <file> (ED25519_PRIVATE_KEY of the platform marketplace)")
 	}
-	return base64.StdEncoding.EncodeToString(priv), base64.StdEncoding.EncodeToString(pub), nil
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", "", fmt.Errorf("read marketplace signing key: %w", err)
+	}
+	value := strings.TrimSpace(string(raw))
+	for _, line := range strings.Split(value, "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "ED25519_PRIVATE_KEY="); ok {
+			value = strings.TrimSpace(v)
+		}
+	}
+	b, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		return "", "", fmt.Errorf("marketplace signing key is not base64: %w", err)
+	}
+	var key ed25519.PrivateKey
+	switch len(b) {
+	case ed25519.SeedSize:
+		key = ed25519.NewKeyFromSeed(b)
+	case ed25519.PrivateKeySize:
+		key = ed25519.PrivateKey(b)
+		if !ed25519.NewKeyFromSeed(key.Seed()).Equal(key) {
+			return "", "", fmt.Errorf("marketplace signing key is inconsistent (public half does not match the seed)")
+		}
+	default:
+		return "", "", fmt.Errorf("marketplace signing key must be 32 or 64 bytes, got %d", len(b))
+	}
+	pub := key.Public().(ed25519.PublicKey)
+	return base64.StdEncoding.EncodeToString(key), base64.StdEncoding.EncodeToString(pub), nil
 }
 
 // cloudflareRanges are the published Cloudflare edge networks (https://www.cloudflare.com/ips/).

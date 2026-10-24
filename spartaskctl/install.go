@@ -30,6 +30,7 @@ type installOptions struct {
 	marketplaceDomain string
 	marketplaceVer    string
 	marketplaceURL    string // central marketplace for on-premise installations
+	marketplaceKey    string // file holding the marketplace signing key (ED25519_PRIVATE_KEY)
 	backupCron        bool
 	assumeYes         bool
 }
@@ -47,6 +48,7 @@ func runInstall(ctx context.Context, s stack, args []string) error {
 	fs.BoolVar(&o.marketplace, "with-marketplace", false, "also run the marketplace (platform server only)")
 	fs.StringVar(&o.marketplaceDomain, "marketplace-domain", "", "marketplace domain (default marketplace.<domain>)")
 	fs.StringVar(&o.marketplaceVer, "marketplace-version", "", "marketplace release (default: -version)")
+	fs.StringVar(&o.marketplaceKey, "marketplace-signing-key", "", "file with the marketplace signing key (ED25519_PRIVATE_KEY); its public key must be built into SparTask")
 	fs.StringVar(&o.marketplaceURL, "marketplace-url", "", "central marketplace for this installation, e.g. https://marketplace.spartask.ai")
 	fs.BoolVar(&o.assumeYes, "y", false, "non-interactive: use flags and defaults, never prompt")
 	if err := fs.Parse(args); err != nil {
@@ -70,6 +72,10 @@ func runInstall(ctx context.Context, s stack, args []string) error {
 	env, mpEnv, err := buildEnv(s, o)
 	if err != nil {
 		return err
+	}
+	if o.marketplace {
+		_, public, _ := readMarketplaceSigningKey(o.marketplaceKey)
+		fmt.Printf("Marketplace public key: %s\nSparTask releases verify licenses only with their built-in keys (spartask_backend/pkg/crypto/license/keys.go); this key must be one of them.\n", public)
 	}
 	if err := prepareDirectories(s, o); err != nil {
 		return err
@@ -185,6 +191,11 @@ func askInstallOptions(p *prompter, o *installOptions) error {
 		if !versionPattern.MatchString(o.marketplaceVer) {
 			return fmt.Errorf("invalid marketplace version %q", o.marketplaceVer)
 		}
+		// The key is never generated: engines trust only the marketplace keys built into the
+		// release, so a new key would make every license and module grant unverifiable.
+		if o.marketplaceKey, err = p.ask("Marketplace signing key file (ED25519_PRIVATE_KEY, from the password manager)", o.marketplaceKey, true); err != nil {
+			return err
+		}
 	}
 	if runtime.GOOS == "linux" && os.Geteuid() == 0 {
 		if o.backupCron, err = p.confirm("Install a daily backup job (03:30, /etc/cron.d/spartask-backup)?", true); err != nil {
@@ -236,7 +247,7 @@ func buildEnv(s stack, o installOptions) (*envFile, *envFile, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	private, public, err := marketplaceKeys()
+	private, _, err := readMarketplaceSigningKey(o.marketplaceKey)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -251,7 +262,6 @@ func buildEnv(s stack, o installOptions) (*envFile, *envFile, error) {
 	env.Set("COMPOSE_FILE", "compose.yml:compose.marketplace.yml")
 	env.Set("MARKETPLACE_DOMAIN", o.marketplaceDomain)
 	env.Set("MARKETPLACE_VERSION", o.marketplaceVer)
-	env.Set("MARKETPLACE_PUBLIC_KEY", public)
 	env.Set("SPARTASK_MARKETPLACE_URL", url)
 	env.Set("MARKETPLACE_API_URL", url)
 	env.Set("MARKETPLACE_ALLOWED_ORIGINS", url)

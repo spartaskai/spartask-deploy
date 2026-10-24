@@ -1,6 +1,9 @@
 package main
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"slices"
@@ -39,10 +42,26 @@ func TestSecretFileIsPrivate(t *testing.T) {
 // the documented layout instead of growing a tail of appended keys.
 func TestBuildEnvFillsTemplates(t *testing.T) {
 	s := stack{dir: ".."}
-	env, mp, err := buildEnv(s, installOptions{domain: "spartask.ai", version: "1.2.3", tls: "files", cloudflare: true,
-		marketplace: true, marketplaceDomain: "marketplace.spartask.ai", marketplaceVer: "1.2.3"})
+	_, signingKey, _ := ed25519.GenerateKey(rand.Reader)
+	keyFile := filepath.Join(t.TempDir(), "marketplace.key")
+	if err := os.WriteFile(keyFile, []byte("ED25519_PRIVATE_KEY="+base64.StdEncoding.EncodeToString(signingKey)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	opts := installOptions{domain: "spartask.ai", version: "1.2.3", tls: "files", cloudflare: true,
+		marketplace: true, marketplaceDomain: "marketplace.spartask.ai", marketplaceVer: "1.2.3"}
+	if _, _, err := buildEnv(s, opts); err == nil {
+		t.Fatal("a marketplace install without its signing key must be refused (a new key would not be trusted)")
+	}
+	opts.marketplaceKey = keyFile
+	env, mp, err := buildEnv(s, opts)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if mp.Get("ED25519_PRIVATE_KEY") != base64.StdEncoding.EncodeToString(signingKey) {
+		t.Fatal("the given marketplace signing key must be used, not a new one")
+	}
+	if env.Get("MARKETPLACE_PUBLIC_KEY") != "" {
+		t.Fatal("releases ignore MARKETPLACE_PUBLIC_KEY; install must not write it")
 	}
 	template, err := os.ReadFile("../.env.example")
 	if err != nil {
@@ -58,7 +77,7 @@ func TestBuildEnvFillsTemplates(t *testing.T) {
 	if got, want := keysOf(mp.Bytes()), keysOf(mpTemplate); !slices.Equal(got, want) {
 		t.Fatalf("marketplace.env keys differ from template:\n got %v\nwant %v", got, want)
 	}
-	for _, key := range []string{"DB_PASSWORD", "SECRET_KEY", "WEB_AUTH_JWT_SECRET", "NATS_AUTH_TOKEN", "MARKETPLACE_DB_PASSWORD", "MARKETPLACE_PUBLIC_KEY", "MARKETPLACE_SSO_SHARED_SECRET"} {
+	for _, key := range []string{"DB_PASSWORD", "SECRET_KEY", "WEB_AUTH_JWT_SECRET", "NATS_AUTH_TOKEN", "MARKETPLACE_DB_PASSWORD", "MARKETPLACE_SSO_SHARED_SECRET"} {
 		if len(env.Get(key)) < 32 {
 			t.Fatalf("%s not generated: %q", key, env.Get(key))
 		}
