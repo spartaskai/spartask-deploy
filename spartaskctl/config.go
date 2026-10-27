@@ -129,11 +129,6 @@ func checkInstalledConfig(s stack) (*installedConfig, error) {
 	if cfg.mpResult, err = syncEnv("marketplace.env", mp, mpRules, env, false); err != nil {
 		return nil, err
 	}
-	engine, market := env.Get("MARKETPLACE_SSO_SHARED_SECRET"), mp.Get("SSO_SHARED_SECRET")
-	if strings.EqualFold(env.Get("MARKETPLACE_SSO_ENABLED"), "true") && engine != "" && market != "" && engine != market {
-		cfg.envResult.Invalid = append(cfg.envResult.Invalid,
-			"MARKETPLACE_SSO_SHARED_SECRET (.env) ile SSO_SHARED_SECRET (marketplace.env) aynı olmalı")
-	}
 	return cfg, nil
 }
 

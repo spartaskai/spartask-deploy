@@ -77,13 +77,18 @@ func TestBuildEnvFillsTemplates(t *testing.T) {
 	if got, want := keysOf(mp.Bytes()), keysOf(mpTemplate); !slices.Equal(got, want) {
 		t.Fatalf("marketplace.env keys differ from template:\n got %v\nwant %v", got, want)
 	}
-	for _, key := range []string{"DB_PASSWORD", "SECRET_KEY", "WEB_AUTH_JWT_SECRET", "NATS_AUTH_TOKEN", "MARKETPLACE_DB_PASSWORD", "MARKETPLACE_SSO_SHARED_SECRET"} {
+	for _, key := range []string{"DB_PASSWORD", "SECRET_KEY", "WEB_AUTH_JWT_SECRET", "NATS_AUTH_TOKEN", "MARKETPLACE_DB_PASSWORD"} {
 		if len(env.Get(key)) < 32 {
 			t.Fatalf("%s not generated: %q", key, env.Get(key))
 		}
 	}
-	if env.Get("MARKETPLACE_SSO_SHARED_SECRET") != mp.Get("SSO_SHARED_SECRET") {
-		t.Fatal("engine and marketplace must share the SSO secret")
+	for _, key := range []string{"MARKETPLACE_SSO_SHARED_SECRET", "MARKETPLACE_SSO_ENABLED", "MARKETPLACE_RECEIPT_AUDIENCE"} {
+		if env.has(key) {
+			t.Fatalf("%s is retired; install must not write it", key)
+		}
+	}
+	if mp.has("SSO_SHARED_SECRET") || mp.has("RECEIPT_AUDIENCE") {
+		t.Fatal("the marketplace shares no secret with SparTask any more")
 	}
 	if env.Get("COMPOSE_FILE") != "compose.yml:compose.marketplace.yml" || env.Get("SPARTASK_DOMAIN") != "spartask.ai" {
 		t.Fatalf("unexpected stack settings: %q %q", env.Get("COMPOSE_FILE"), env.Get("SPARTASK_DOMAIN"))
