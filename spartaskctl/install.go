@@ -124,7 +124,7 @@ func runInstall(ctx context.Context, s stack, args []string) error {
 			return err
 		}
 	}
-	printInstallSummary(o, env)
+	printInstallSummary(o)
 	// Settings the operator still has to fill in, with their explanations.
 	cfg, err := checkInstalledConfig(s)
 	if err != nil {
@@ -333,7 +333,7 @@ func installBackupCron(s stack) error {
 	return nil
 }
 
-func printInstallSummary(o installOptions, env *envFile) {
+func printInstallSummary(o installOptions) {
 	fmt.Printf("\nSpartask %s is running: https://%s (companies: https://<company>.%s)\n", o.version, o.domain, o.domain)
 	if o.marketplace {
 		fmt.Printf("Marketplace %s: https://%s\n", o.marketplaceVer, o.marketplaceDomain)
