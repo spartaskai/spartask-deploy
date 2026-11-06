@@ -2,7 +2,8 @@
 # plain `docker compose ...` works too, since .env sets COMPOSE_FILE and every variable.
 #
 # Only Caddy publishes ports (80/443). PostgreSQL, NATS and the app containers are reachable only on
-# the internal network; use `docker compose exec db psql -U spartask spartask` for database work.
+# the internal network; use `docker compose exec db sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'` for database work, or
+# an SSH tunnel to 127.0.0.1:${DB_LOCAL_PORT} from your own computer (README, "Veritabanına bağlanmak").
 
 name: spartask
 
@@ -67,6 +68,9 @@ services:
       POSTGRES_DB: ${DB_NAME:-spartask}
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
+    # Only on the server's loopback, for an SSH tunnel; never reachable from outside.
+    ports:
+      - "127.0.0.1:${DB_LOCAL_PORT:?DB_LOCAL_PORT must be set in .env}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s

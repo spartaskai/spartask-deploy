@@ -89,7 +89,31 @@ sudo BACKUP_ENCRYPTION_KEY=... ./spartaskctl restore backups/20261004T033000Z -w
   `update` ve `restart` aynı kontrolü otomatik yapar; zorunlu bir ayar eksikse hiçbir şeyi değiştirmeden durur. Rapor şifre değerlerini asla göstermez; bir değeri görmek için: `sudo grep ^SPARTASK_PLATFORM_API_TOKEN= .env`.
 - `update` başarısız olursa `.env` önceki sürüme döner; `spartaskctl restart` eski sürümü tekrar ayağa kaldırır. Başarısız bir migration dosyası kendi transaction'ında geri alınır.
 - Yedek içeriği: `spartask.dump` (pg_dump), `storage.tar.gz`, `config.tar.gz` (.env, sertifikalar), marketplace varsa `marketplace.dump` ve `marketplace-storage.tar.gz`. Dosyalar `BACKUP_ENCRYPTION_KEY` ile şifrelenir (AES-256-GCM) ve `.enc` uzantısı alır; anahtar `config`/`update` ile üretilir. Anahtar boşsa yedek şifresiz alınır ve uyarı verilir. Şifreli yedekleri sunucu dışına da kopyalayın (barındırma firmasının yedek alanı, S3 uyumlu depolama vb.; kişisel veri içerdiği için mümkünse Türkiye'de); eski şifresiz yedekler de geri yüklenebilir.
-- Veritabanına bağlanmak: `sudo docker compose exec db psql -U spartask spartask`
+- Veritabanına bağlanmak: `sudo docker compose exec db sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'`, ya da kendi bilgisayarından SSH tüneliyle (aşağıda).
+
+## Veritabanına bağlanmak
+
+PostgreSQL dışarıya açık değildir; yalnızca sunucunun kendi içinde `127.0.0.1:<DB_LOCAL_PORT>`'ta (varsayılan `5433`)
+dinler. Kendi bilgisayarından SSH tüneliyle bağlanılır (ör. DBeaver). Veriler firmaların süreçleri ve uygulama
+üzerinden değişir; elle yazma tutarlılığı bozabilir. Bu yüzden salt okunur bir kullanıcı kullanılır.
+
+**Salt okunur kullanıcı** (bir kez). `pg_read_all_data` bütün şemaları (firma şemaları dahil, sonradan açılanlar da)
+okuyabilir, hiçbir şey yazamaz. Komut şifreyi bir kez gösterir; şifre yöneticisine kaydedin:
+
+```bash
+cd /opt/spartask
+RO=<salt okunur kullanıcının adı>
+PW=$(openssl rand -hex 24); echo "$RO şifresi: $PW"
+sudo docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" "$POSTGRES_DB"' <<SQL
+CREATE ROLE "$RO" LOGIN PASSWORD '$PW';
+GRANT pg_read_all_data TO "$RO";
+SQL
+unset PW RO
+```
+
+**DBeaver:** Yeni bağlantı → PostgreSQL. **Main:** Host `localhost`, Port `<DB_LOCAL_PORT>`, Database `.env`'deki
+`DB_NAME`, Username yukarıda açılan salt okunur kullanıcı. **SSH** sekmesi: Use SSH Tunnel; sunucunun IP'si, kullanıcı ve anahtar. Ed25519 anahtarı
+okunamazsa SSH sekmesinin gelişmiş ayarlarında Implementation `SSHJ` seçilir.
 
 ## Demo şirketi
 

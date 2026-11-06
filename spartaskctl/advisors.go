@@ -176,7 +176,7 @@ func advisePlatformTenants(ctx context.Context, env *envFile, result *syncResult
 	if err != nil {
 		if len(configured) == 0 {
 			result.Notes = append(result.Notes, "SPARTASK_PLATFORM_TENANT_IDS: firmalar okunamadı (stack çalışıyor mu?). Elle bakmak için:\n"+
-				`sudo docker compose exec db psql -U spartask spartask -c "SELECT id, subdomain, name FROM public.tenants"`)
+				`sudo docker compose exec db sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB" -c "SELECT id, subdomain, name FROM public.tenants"'`)
 		}
 		return
 	}
