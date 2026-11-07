@@ -1,7 +1,10 @@
 # Spartask reverse proxy. Values come from .env through compose.yml:
-#   SPARTASK_DOMAIN        e.g. spartask.ai — serves it and every tenant subdomain (*.spartask.ai)
-#   SPARTASK_TLS           "/certs/cert.pem /certs/key.pem" (certificate files, e.g. Cloudflare Origin)
-#                          or "internal" (Caddy's own CA, for closed networks)
+#   SPARTASK_SITES         the addresses served: the domain and every company subdomain
+#                          ("spartask.ai, *.spartask.ai", compose's default) or a single address
+#                          ("spartask.firma.com.tr")
+#   SPARTASK_TLS           "/certs/cert.pem /certs/key.pem" (certificate files, e.g. Cloudflare Origin),
+#                          an e-mail address (Let's Encrypt; single address only) or "internal"
+#                          (Caddy's own CA, for closed networks)
 #   CADDY_TRUSTED_PROXIES  proxies allowed to report the client IP ("private_ranges", or the
 #                          Cloudflare ranges when the domain is proxied by Cloudflare)
 {
@@ -11,7 +14,7 @@
 	}
 }
 
-{$SPARTASK_DOMAIN}, *.{$SPARTASK_DOMAIN} {
+{$SPARTASK_SITES} {
 	tls {$SPARTASK_TLS}
 	encode zstd gzip
 

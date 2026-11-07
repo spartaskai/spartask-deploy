@@ -57,12 +57,17 @@ func (p *prompter) ask(label, def string, required bool) (string, error) {
 	}
 }
 
-// askSecret reads without echo when stdin is a terminal.
+// askSecret reads without echo when stdin is a terminal; an empty answer skips.
 func (p *prompter) askSecret(label string) (string, error) {
 	if p.assumeYes {
 		return "", nil
 	}
-	fmt.Fprintf(p.out, "%s (input hidden, Enter to skip): ", label)
+	return p.readHidden(label + " (input hidden, Enter to skip)")
+}
+
+// readHidden prints label and reads a line without echo when stdin is a terminal.
+func (p *prompter) readHidden(label string) (string, error) {
+	fmt.Fprintf(p.out, "%s: ", label)
 	if restore := disableEcho(); restore != nil {
 		defer func() {
 			restore()

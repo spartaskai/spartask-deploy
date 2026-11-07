@@ -90,6 +90,9 @@ func TestBuildEnvFillsTemplates(t *testing.T) {
 	if mp.has("SSO_SHARED_SECRET") || mp.has("RECEIPT_AUDIENCE") {
 		t.Fatal("the marketplace shares no secret with SparTask any more")
 	}
+	if env.Get("SPARTASK_SITES") != "" || env.Get("SPARTASK_ROOT_TENANT") != "" {
+		t.Fatalf("companies live on subdomains: sites %q, root company %q", env.Get("SPARTASK_SITES"), env.Get("SPARTASK_ROOT_TENANT"))
+	}
 	if env.Get("COMPOSE_FILE") != "compose.yml:compose.marketplace.yml" || env.Get("SPARTASK_DOMAIN") != "spartask.ai" {
 		t.Fatalf("unexpected stack settings: %q %q", env.Get("COMPOSE_FILE"), env.Get("SPARTASK_DOMAIN"))
 	}

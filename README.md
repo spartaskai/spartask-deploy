@@ -26,7 +26,27 @@ Uygulama imajları GitHub Actions tarafından sürüm etiketiyle üretilir (`ghc
 
 ## Kurulum
 
-**Gereksinimler:** Ubuntu 22.04/24.04 (2 vCPU, 4 GB RAM önerilir), Docker Engine + Compose eklentisi (`curl -fsSL https://get.docker.com | sh`), domain için `A` kaydı ve `*` (wildcard) kaydı.
+**Gereksinimler:** Ubuntu 22.04/24.04 (2 vCPU, 4 GB RAM önerilir), Docker Engine + Compose eklentisi (`curl -fsSL https://get.docker.com | sh`), domain için `A` kaydı; firmalar `<firma>.<domain>` adresinde açılacaksa (spartask.ai) `*` (wildcard) kaydı da.
+
+### Müşteri kurulumu (aktivasyon kodu)
+
+Kendi sunucusuna SparTask kuran müşteri önce `https://accounts.spartask.ai/onprem` sayfasında SparTask hesabıyla girer, kurulumun adresini (ör. `https://spartask.firma.com.tr`) yazar ve on-prem lisans sözleşmesini onaylar. Sayfa 24 saat geçerli bir aktivasyon kodu ve kurulum komutunu gösterir:
+
+```bash
+sudo mkdir -p /opt/spartask && cd /opt/spartask
+curl -fsSL https://github.com/spartaskai/spartask-deploy/releases/latest/download/spartask-deploy-linux-amd64.tar.gz | sudo tar xz --strip-components=1
+sudo ./spartaskctl install -activation <kod> -license-server https://accounts.spartask.ai
+```
+
+`install` sürümü, yöneticinin e-postasını, adını ve şifresini sorar; sonra:
+
+1. Kurulum anahtarını üretir ve kodu bu anahtarla imzalayıp lisans servisinden lisansı alır. Adres ve firma adı sayfada girilenlerdir.
+2. Tek adresli `.env` yazar: `SPARTASK_SITES` yalnızca o adres, `SPARTASK_ROOT_TENANT` firmanın adresi (firma kök adreste açılır), `SPARTASK_TLS` yöneticinin e-postası (Caddy sertifikayı Let's Encrypt'ten alır), `SPARTASK_SIGNUP_MODE=closed`.
+3. Yığını başlatır, lisansı yükler, firmayı ve yöneticisini açar.
+
+Adresin DNS `A` kaydı sunucuyu göstermeli, 80 ve 443 portları internetten açık olmalıdır. Etkileşimsiz kurulumda (`-y`) yönetici bilgileri `-admin-email`, `-admin-name` bayraklarıyla, şifre `SPARTASK_ADMIN_PASSWORD` ortam değişkeniyle verilir. Firma adından adres kimliği üretilemezse (`-company-id` ile verilir) ya da kod süresi dolduysa hiçbir şey kurulmadan durur; sayfadan yeni kod alınır.
+
+### Platform ve diğer kurulumlar
 
 ```bash
 sudo mkdir -p /opt/spartask && cd /opt/spartask
@@ -49,10 +69,6 @@ sudo ./spartaskctl install
 # -marketplace-signing-key: şifre yöneticisindeki ED25519_PRIVATE_KEY'i içeren dosya (yeni anahtar üretilmez)
 sudo ./spartaskctl install -domain spartask.ai -cloudflare -with-marketplace -marketplace-signing-key /root/marketplace.key \
      -registry-user <github-kullanıcısı>
-
-# On-premise müşteri (kendi sertifikası, merkezi marketplace'e bağlı)
-sudo ./spartaskctl install -domain spartask.firma.com.tr -cert /root/firma.crt -key /root/firma.key \
-     -marketplace-url https://marketplace.spartask.ai
 
 # Kapalı ağ (sertifika yok, Caddy kendi CA'sını kullanır)
 sudo ./spartaskctl install -domain spartask.local -tls internal
@@ -138,6 +154,22 @@ sudo ./spartaskctl demo apply demo/demo-mobilya.json
   ```
 
 - Komut api container'ı içindeki `/app/bin/spartask-admin` ile çalışır; container çalışır durumda olmalıdır.
+
+## Kurulum lisansı
+
+Yeni firma açmak için kurulumun bir **kurulum lisansı** olmalıdır; spartask.ai dahil. Lisans, lisans servisinin (accounts.spartask.ai) bu kurulumun anahtarı için verdiği bir dosyadır. Lisans yoksa mevcut firmalar çalışmaya devam eder, yalnızca yeni firma açılamaz.
+
+```bash
+sudo ./spartaskctl license show                 # kurulum anahtarının parmak izi (sha256:...) ve lisans durumu
+sudo ./spartaskctl license install license.jws  # lisans servisinin verdiği lisansı doğrular ve yükler
+sudo ./spartaskctl license renew                # lisansı lisans servisinden şimdi yeniler
+```
+
+- `install -activation` lisansı kendisi alır ve yükler (yukarıda "Müşteri kurulumu"); elle yükleme spartask.ai ve aktivasyon kullanılamayan kurulumlar içindir.
+- Anahtar `.env` içindeki `SPARTASK_INSTALLATION_KEY`'dir; `install`/`config` üretir. Lisans ona bağlıdır: anahtar değişirse (`.env` kaybı) yeni lisans gerekir. `.env`'in kopyasını şifre yöneticisinde saklayın.
+- Ücretsiz lisans tek firmalıktır (`community`); spartask.ai'nin lisansı sınırsızdır (`platform`).
+- `SPARTASK_LICENSE_SERVER` doluysa (`install -activation` yazar) lisans bitimine 30 gün kala kendiliğinden yenilenir. On-prem lisans sözleşmesi değiştiyse yenileme bekler: platform firmasının yöneticisi uygulamada yeni sürümü onaylayınca lisans hemen yenilenir. Yenileme başarısızsa yöneticiler uygulamada uyarı görür.
+- Lisansın süresi dolarsa 30 gün ek süre vardır; sonra yeni firma açılamaz, çalışan her şey sürer.
 
 ## Kayıt ve platform süreçleri
 

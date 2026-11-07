@@ -22,7 +22,7 @@ var (
 type installOptions struct {
 	domain            string
 	version           string
-	tls               string // "files" or "internal"
+	tls               string // "files", "internal" or "acme" (Let's Encrypt, single address)
 	certFile, keyFile string
 	cloudflare        bool
 	registryUser      string
@@ -33,6 +33,12 @@ type installOptions struct {
 	marketplaceKey    string // file holding the marketplace signing key (ED25519_PRIVATE_KEY)
 	backupCron        bool
 	assumeYes         bool
+	// An installation activated with a code from the license service's on-prem page: the code
+	// brings its address, license and first company (see activation.go).
+	activation    string
+	licenseServer string
+	companyID     string
+	admin         adminAccount
 }
 
 func runInstall(ctx context.Context, s stack, args []string) error {
@@ -51,6 +57,11 @@ func runInstall(ctx context.Context, s stack, args []string) error {
 	fs.StringVar(&o.marketplaceKey, "marketplace-signing-key", "", "file with the marketplace signing key (ED25519_PRIVATE_KEY); its public key must be built into SparTask")
 	fs.StringVar(&o.marketplaceURL, "marketplace-url", "", "central marketplace for this installation, e.g. https://marketplace.spartask.ai")
 	fs.BoolVar(&o.assumeYes, "y", false, "non-interactive: use flags and defaults, never prompt")
+	fs.StringVar(&o.activation, "activation", "", "activation code from the license service's on-prem page: the installation takes its address, license and first company from it")
+	fs.StringVar(&o.licenseServer, "license-server", "", "license service address shown with the activation code, e.g. https://accounts.spartask.ai")
+	fs.StringVar(&o.admin.email, "admin-email", "", "with -activation: the administrator's e-mail address (also Let's Encrypt's contact)")
+	fs.StringVar(&o.admin.name, "admin-name", "", "with -activation: the administrator's full name")
+	fs.StringVar(&o.companyID, "company-id", "", "with -activation: the company's address id (default: made from its name)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -73,6 +84,15 @@ func runInstall(ctx context.Context, s stack, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := registryLogin(ctx, s, p, o); err != nil {
+		return err
+	}
+	var company *companyPlan
+	if o.activation != "" {
+		if company, err = activate(ctx, s, env, &o); err != nil {
+			return err
+		}
+	}
 	if o.marketplace {
 		_, public, _ := readMarketplaceSigningKey(o.marketplaceKey)
 		fmt.Printf("Marketplace public key: %s\nSparTask releases verify licenses only with their built-in keys (spartask_backend/pkg/crypto/license/keys.go); this key must be one of them.\n", public)
@@ -82,20 +102,6 @@ func runInstall(ctx context.Context, s stack, args []string) error {
 	}
 	if err := installCertificates(s, o); err != nil {
 		return err
-	}
-	if o.registryUser != "" {
-		token, err := p.askSecret("ghcr.io token (read:packages)")
-		if err != nil {
-			return err
-		}
-		if token != "" {
-			login := s.command(ctx, "login", "ghcr.io", "-u", o.registryUser, "--password-stdin")
-			login.Stdin = strings.NewReader(token)
-			login.Stdout, login.Stderr = os.Stdout, os.Stderr
-			if err := login.Run(); err != nil {
-				return fmt.Errorf("docker login ghcr.io: %w", err)
-			}
-		}
 	}
 	if err := env.Save(s.path(".env")); err != nil {
 		return err
@@ -119,12 +125,17 @@ func runInstall(ctx context.Context, s stack, args []string) error {
 	if err := s.waitHealthy(ctx, "api", 3*time.Minute); err != nil {
 		return resume(err, "Inspect with: docker compose logs api")
 	}
+	if company != nil {
+		if err := company.create(ctx, s); err != nil {
+			return err
+		}
+	}
 	if o.backupCron {
 		if err := installBackupCron(s); err != nil {
 			return err
 		}
 	}
-	printInstallSummary(o)
+	printInstallSummary(o, company)
 	// Settings the operator still has to fill in, with their explanations.
 	cfg, err := checkInstalledConfig(s)
 	if err != nil {
@@ -137,19 +148,38 @@ func runInstall(ctx context.Context, s stack, args []string) error {
 
 func askInstallOptions(p *prompter, o *installOptions) error {
 	var err error
-	if o.domain, err = p.ask("Domain (company addresses become <company>.<domain>)", o.domain, true); err != nil {
-		return err
-	}
-	o.domain = strings.ToLower(strings.TrimSpace(o.domain))
-	if !domainPattern.MatchString(o.domain) {
-		return fmt.Errorf("invalid domain %q (no scheme, no port), e.g. spartask.ai", o.domain)
-	}
 	if o.version, err = p.ask("Spartask version", o.version, true); err != nil {
 		return err
 	}
 	o.version = strings.TrimPrefix(o.version, "v")
 	if !versionPattern.MatchString(o.version) {
 		return fmt.Errorf("invalid version %q, e.g. 1.0.0", o.version)
+	}
+	if o.activation != "" {
+		if err := askActivation(p, o); err != nil {
+			return err
+		}
+	} else if err := askAddressAndTLS(p, o); err != nil {
+		return err
+	}
+	if runtime.GOOS == "linux" && os.Geteuid() == 0 {
+		if o.backupCron, err = p.confirm("Install a daily backup job (03:30, /etc/cron.d/spartask-backup)?", true); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// askAddressAndTLS asks for the domain, the certificate and the marketplace of an installation
+// whose companies live on subdomains of the domain (spartask.ai).
+func askAddressAndTLS(p *prompter, o *installOptions) error {
+	var err error
+	if o.domain, err = p.ask("Domain (company addresses become <company>.<domain>)", o.domain, true); err != nil {
+		return err
+	}
+	o.domain = strings.ToLower(strings.TrimSpace(o.domain))
+	if !domainPattern.MatchString(o.domain) {
+		return fmt.Errorf("invalid domain %q (no scheme, no port), e.g. spartask.ai", o.domain)
 	}
 	if !p.assumeYes {
 		fmt.Println("TLS: 1) certificate files for the domain and *.domain (Cloudflare Origin Certificate, company certificate)")
@@ -197,10 +227,23 @@ func askInstallOptions(p *prompter, o *installOptions) error {
 			return err
 		}
 	}
-	if runtime.GOOS == "linux" && os.Geteuid() == 0 {
-		if o.backupCron, err = p.confirm("Install a daily backup job (03:30, /etc/cron.d/spartask-backup)?", true); err != nil {
-			return err
-		}
+	return nil
+}
+
+// registryLogin logs in to ghcr.io for private images when -registry-user is given.
+func registryLogin(ctx context.Context, s stack, p *prompter, o installOptions) error {
+	if o.registryUser == "" {
+		return nil
+	}
+	token, err := p.askSecret("ghcr.io token (read:packages)")
+	if err != nil || token == "" {
+		return err
+	}
+	login := s.command(ctx, "login", "ghcr.io", "-u", o.registryUser, "--password-stdin")
+	login.Stdin = strings.NewReader(token)
+	login.Stdout, login.Stderr = os.Stdout, os.Stderr
+	if err := login.Run(); err != nil {
+		return fmt.Errorf("docker login ghcr.io: %w", err)
 	}
 	return nil
 }
@@ -215,13 +258,17 @@ func buildEnv(s stack, o installOptions) (*envFile, *envFile, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	env.Set("SPARTASK_DOMAIN", o.domain)
 	env.Set("SPARTASK_VERSION", o.version)
-	if o.tls == "internal" {
+	switch o.tls {
+	case "internal":
 		env.Set("SPARTASK_TLS", "internal")
-	} else {
+	case "acme":
+		env.Set("SPARTASK_TLS", o.admin.email)
+	default:
 		env.Set("SPARTASK_TLS", "/certs/cert.pem /certs/key.pem")
 	}
+	// An activated installation learns its address from the activation (activate).
+	env.Set("SPARTASK_DOMAIN", o.domain)
 	if o.cloudflare {
 		env.Set("CADDY_TRUSTED_PROXIES", cloudflareTrustedProxies())
 	}
@@ -333,7 +380,11 @@ func installBackupCron(s stack) error {
 	return nil
 }
 
-func printInstallSummary(o installOptions) {
+func printInstallSummary(o installOptions, company *companyPlan) {
+	if company != nil {
+		company.printSummary(o)
+		return
+	}
 	fmt.Printf("\nSpartask %s is running: https://%s (companies: https://<company>.%s)\n", o.version, o.domain, o.domain)
 	if o.marketplace {
 		fmt.Printf("Marketplace %s: https://%s\n", o.marketplaceVer, o.marketplaceDomain)

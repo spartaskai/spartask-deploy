@@ -1,6 +1,7 @@
 // Command spartaskctl installs and operates a Spartask server (Docker Compose stack).
 //
 //	spartaskctl install [flags]            first installation (asks for domain, version, TLS ...)
+//	spartaskctl install -activation CODE   a customer's installation activated on the on-prem page
 //	spartaskctl update <version>           backup, switch release, migrate, health check
 //	spartaskctl restart                    apply .env changes
 //	spartaskctl config [-check]            add new settings, generate secrets, report what is missing
@@ -36,6 +37,10 @@ Commands:
   install [-domain D] [-version V] [-tls files|internal] [-cert F -key F] [-cloudflare]
           [-registry-user U] [-with-marketplace] [-marketplace-url URL] [-y]
                                  first installation in DIR (default: the current directory)
+  install -activation CODE -license-server URL [-admin-email E] [-admin-name N]
+          [-company-id ID] [-version V] [-registry-user U] [-y]
+                                 a customer's installation with the code from the on-prem page:
+                                 its address, license and company come with the code
   update <version> [-marketplace-version V] [-no-backup]
                                  backup, switch release, apply migrations, health check
   restart                        apply .env changes (docker compose up -d)
@@ -50,6 +55,11 @@ Commands:
                                  roles, data sources ("env:NAME" values come from .env)
   system-processes sync          publish the system processes (employees, format profiles)
                                  to every company now; the API also does it when it starts
+  license show                   this installation's key fingerprint and license state
+  license install <file>         install the license the license service issued for it;
+                                 without one no company can be created
+  license renew                  renew the license with the license service now (the scheduler
+                                 renews it 30 days before it expires)
   version                        print the spartaskctl version
 `
 
@@ -102,6 +112,8 @@ func run(ctx context.Context, s stack, command string, args []string) error {
 		return runDemo(ctx, s, args)
 	case "system-processes":
 		return runSystemProcesses(ctx, s, args)
+	case "license":
+		return runLicense(ctx, s, args)
 	case "version":
 		fmt.Println(toolVersion)
 		return nil
