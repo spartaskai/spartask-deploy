@@ -230,6 +230,15 @@ func askAddressAndTLS(p *prompter, o *installOptions) error {
 	return nil
 }
 
+// setMarketplaceURL connects the installation to a central marketplace: the studio link, package
+// downloads and receipts, and the origin allowed to deliver install requests from the browser.
+func setMarketplaceURL(env *envFile, raw string) {
+	url := strings.TrimRight(raw, "/")
+	env.Set("SPARTASK_MARKETPLACE_URL", url)
+	env.Set("MARKETPLACE_API_URL", url)
+	env.Set("MARKETPLACE_ALLOWED_ORIGINS", url)
+}
+
 // registryLogin logs in to ghcr.io for private images when -registry-user is given.
 func registryLogin(ctx context.Context, s stack, p *prompter, o installOptions) error {
 	if o.registryUser == "" {
@@ -273,10 +282,7 @@ func buildEnv(s stack, o installOptions) (*envFile, *envFile, error) {
 		env.Set("CADDY_TRUSTED_PROXIES", cloudflareTrustedProxies())
 	}
 	if o.marketplaceURL != "" {
-		url := strings.TrimRight(o.marketplaceURL, "/")
-		env.Set("SPARTASK_MARKETPLACE_URL", url)
-		env.Set("MARKETPLACE_API_URL", url)
-		env.Set("MARKETPLACE_ALLOWED_ORIGINS", url)
+		setMarketplaceURL(env, o.marketplaceURL)
 	}
 	if !o.marketplace {
 		// Secrets marked "generate" in the template (database password, SECRET_KEY, tokens ...).

@@ -52,6 +52,8 @@ type activationAnswer struct {
 	OrganizationID   string `json:"organization_id"`
 	OrganizationName string `json:"organization_name"`
 	BaseURL          string `json:"base_url"`
+	MarketplaceURL   string `json:"marketplace_url"`
+	MarketplaceID    string `json:"marketplace_id"`
 }
 
 // companyIDPattern is a company address id SparTask accepts (its schema name is tenant_<id>).
@@ -183,7 +185,29 @@ func applyActivation(env *envFile, o *installOptions, answer activationAnswer) (
 	// agreement, and the scheduler renews the license with the license service.
 	env.Set("SPARTASK_PLATFORM_TENANT_IDS", id)
 	env.Set("SPARTASK_LICENSE_SERVER", o.licenseServer)
+	if err := applyMarketplace(env, o, answer); err != nil {
+		return nil, err
+	}
 	return &companyPlan{id: id, name: answer.OrganizationName, address: "https://" + domain, license: answer.License, admin: o.admin}, nil
+}
+
+// applyMarketplace lets the company use the marketplace as the installation: the marketplace knows
+// it by the installation's marketplace id, and its executor licenses are the installation's. The
+// marketplace is the one the license service names unless -marketplace-url chose another.
+func applyMarketplace(env *envFile, o *installOptions, answer activationAnswer) error {
+	if answer.MarketplaceID == "" {
+		return nil
+	}
+	env.Set("SPARTASK_MARKETPLACE_COMPANY", answer.MarketplaceID)
+	if o.marketplaceURL != "" || answer.MarketplaceURL == "" {
+		return nil
+	}
+	u, err := url.Parse(answer.MarketplaceURL)
+	if err != nil || u.Scheme != "https" || u.Host == "" || (u.Path != "" && u.Path != "/") {
+		return fmt.Errorf("the license service named an invalid marketplace address %q", answer.MarketplaceURL)
+	}
+	setMarketplaceURL(env, answer.MarketplaceURL)
+	return nil
 }
 
 // addressDomain returns the host of the address registered on the on-prem page: https, no port,

@@ -41,8 +41,10 @@ sudo ./spartaskctl install -activation <kod> -license-server https://accounts.sp
 `install` sürümü, yöneticinin e-postasını, adını ve şifresini sorar; sonra:
 
 1. Kurulum anahtarını üretir ve kodu bu anahtarla imzalayıp lisans servisinden lisansı alır. Adres ve firma adı sayfada girilenlerdir.
-2. Tek adresli `.env` yazar: `SPARTASK_SITES` yalnızca o adres, `SPARTASK_ROOT_TENANT` firmanın adresi (firma kök adreste açılır), `SPARTASK_TLS` yöneticinin e-postası (Caddy sertifikayı Let's Encrypt'ten alır), `SPARTASK_SIGNUP_MODE=closed`.
+2. Tek adresli `.env` yazar: `SPARTASK_SITES` yalnızca o adres, `SPARTASK_ROOT_TENANT` firmanın adresi (firma kök adreste açılır), `SPARTASK_TLS` yöneticinin e-postası (Caddy sertifikayı Let's Encrypt'ten alır), `SPARTASK_SIGNUP_MODE=closed`. Lisans servisi bir marketplace bildiriyorsa kurulumu ona bağlar (`SPARTASK_MARKETPLACE_URL`, `MARKETPLACE_API_URL`, `MARKETPLACE_ALLOWED_ORIGINS`; `-marketplace-url` başka birini seçer) ve marketplace'in firmayı tanıdığı kimliği yazar (`SPARTASK_MARKETPLACE_COMPANY=onprem.<kurulum kimliği>`).
 3. Yığını başlatır, lisansı yükler, firmayı ve yöneticisini açar.
+
+Kurulumdan sonra firmanın yöneticisi stüdyodaki **Marketplace** bağlantısıyla SparTask hesabına girer ve ücretsiz executor'lu modülleri (ör. CRM) kurar; executor lisansları kuruluma bağlıdır ve scheduler onları 6 saatte bir yeniler. Ücretli executor'lar şimdilik yalnız spartask.ai'de kullanılabilir.
 
 Adresin DNS `A` kaydı sunucuyu göstermeli, 80 ve 443 portları internetten açık olmalıdır. Etkileşimsiz kurulumda (`-y`) yönetici bilgileri `-admin-email`, `-admin-name` bayraklarıyla, şifre `SPARTASK_ADMIN_PASSWORD` ortam değişkeniyle verilir. Firma adından adres kimliği üretilemezse (`-company-id` ile verilir) ya da kod süresi dolduysa hiçbir şey kurulmadan durur; sayfadan yeni kod alınır.
 

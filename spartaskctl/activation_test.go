@@ -68,7 +68,7 @@ func TestApplyActivation(t *testing.T) {
 		t.Fatal(err)
 	}
 	answer := activationAnswer{License: "lisans", InstallationID: "inst-1", OrganizationID: "org-1", OrganizationName: "Firma A.Ş.",
-		BaseURL: "https://spartask.firma.example"}
+		BaseURL: "https://spartask.firma.example", MarketplaceURL: "https://marketplace.example", MarketplaceID: "onprem.inst-1"}
 	plan, err := applyActivation(env, &o, answer)
 	if err != nil {
 		t.Fatal(err)
@@ -78,7 +78,9 @@ func TestApplyActivation(t *testing.T) {
 	}
 	want := map[string]string{"SPARTASK_DOMAIN": "spartask.firma.example", "SPARTASK_SITES": "spartask.firma.example",
 		"SPARTASK_ROOT_TENANT": "firma-a-s", "SPARTASK_SIGNUP_MODE": "closed", "SPARTASK_TLS": "bt@firma.example",
-		"SPARTASK_PLATFORM_TENANT_IDS": "firma-a-s", "SPARTASK_LICENSE_SERVER": "https://accounts.example"}
+		"SPARTASK_PLATFORM_TENANT_IDS": "firma-a-s", "SPARTASK_LICENSE_SERVER": "https://accounts.example",
+		"SPARTASK_MARKETPLACE_COMPANY": "onprem.inst-1", "SPARTASK_MARKETPLACE_URL": "https://marketplace.example",
+		"MARKETPLACE_API_URL": "https://marketplace.example", "MARKETPLACE_ALLOWED_ORIGINS": "https://marketplace.example"}
 	for key, value := range want {
 		if got := env.Get(key); got != value {
 			t.Errorf("%s = %q, want %q", key, got, value)
@@ -94,6 +96,19 @@ func TestApplyActivation(t *testing.T) {
 	if got, want := keysOf(env.Bytes()), keysOf(template); !slices.Equal(got, want) {
 		t.Fatalf(".env keys differ from .env.example:\n got %v\nwant %v", got, want)
 	}
+
+	// -marketplace-url chooses another marketplace; the license service names an https one.
+	o.marketplaceURL = "https://magaza.firma.example"
+	env.Set("SPARTASK_MARKETPLACE_URL", o.marketplaceURL)
+	if _, err := applyActivation(env, &o, answer); err != nil || env.Get("SPARTASK_MARKETPLACE_URL") != "https://magaza.firma.example" {
+		t.Fatalf("-marketplace-url: %q %v", env.Get("SPARTASK_MARKETPLACE_URL"), err)
+	}
+	o.marketplaceURL = ""
+	answer.MarketplaceURL = "http://marketplace.example"
+	if _, err := applyActivation(env, &o, answer); err == nil {
+		t.Fatal("a plain http marketplace was accepted")
+	}
+	answer.MarketplaceURL = "https://marketplace.example"
 
 	o.companyID = "Kötü"
 	if _, err := applyActivation(env, &o, answer); err == nil {
