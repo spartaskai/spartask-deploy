@@ -9,6 +9,7 @@ Spartask'ı bir Linux sunucuya (bulut ya da müşterinin kendi sunucusu / on-pre
 | `caddy/` | Reverse proxy ve TLS ayarı — `domain` ve tüm firma alt alan adları (`*.domain`) |
 | `.env.example`, `marketplace.env.example` | Ayar şablonları (kurulumda `.env` / `marketplace.env` olarak, mode 600, üretilmiş şifrelerle yazılır) |
 | `spartaskctl` | Kurulum ve işletim aracı (Go): `install`, `update`, `backup`, `restore`, `status`, `logs`, `restart` |
+| `install.sh` | Tek komutla kurulum (`get.spartask.ai`): Docker'ı kurar, paketi indirip doğrular, `spartaskctl install`'u çalıştırır |
 
 Uygulama imajları GitHub Actions tarafından sürüm etiketiyle üretilir (`ghcr.io/spartaskai/spartask:<sürüm>`). Sunucuda kaynak kod veya derleme yoktur; sadece imaj çekilir.
 
@@ -30,13 +31,21 @@ Uygulama imajları GitHub Actions tarafından sürüm etiketiyle üretilir (`ghc
 
 ### Müşteri kurulumu (aktivasyon kodu)
 
-Kendi sunucusuna SparTask kuran müşteri önce `https://accounts.spartask.ai/onprem` sayfasında SparTask hesabıyla girer, kurulumun adresini (ör. `https://spartask.firma.com.tr`) yazar ve on-prem lisans sözleşmesini onaylar. Sayfa 24 saat geçerli bir aktivasyon kodu ve kurulum komutunu gösterir:
+Kendi sunucusuna SparTask kuran müşteri önce `https://accounts.spartask.ai/onprem` sayfasında SparTask hesabıyla girer, kurulumun adresini (ör. `https://spartask.firma.com.tr`) yazar ve on-prem lisans sözleşmesini onaylar. Sayfa 24 saat geçerli bir aktivasyon kodu ve tek satırlık kurulum komutunu gösterir:
 
 ```bash
-sudo mkdir -p /opt/spartask && cd /opt/spartask
-curl -fsSL https://github.com/spartaskai/spartask-deploy/releases/latest/download/spartask-deploy-linux-amd64.tar.gz | sudo tar xz --strip-components=1
-sudo ./spartaskctl install -activation <kod> -license-server https://accounts.spartask.ai
+curl -fsSL https://get.spartask.ai | sudo sh -s -- -activation <kod> -license-server https://accounts.spartask.ai
 ```
+
+`get.spartask.ai` bu deponun son release'indeki `install.sh`'tır (`.../releases/latest/download/install.sh`). Betik:
+
+- yalnızca Linux ve x86_64 (amd64) sunucuda çalışır, root ister,
+- Docker yoksa `https://get.docker.com` ile kurar,
+- son release'in `spartask-deploy-linux-amd64.tar.gz` paketini indirir, release'in `SHA256SUMS`'u ile doğrular, `/opt/spartask`'a açar (`SPARTASK_DIR` ile başka klasör; `SPARTASK_DEPLOY_VERSION=v1.2.0` ile belirli sürüm),
+- `/opt/spartask/.env` zaten varsa hiçbir şeye dokunmadan durur (kurulu sunucu `./spartaskctl update` ile güncellenir),
+- `--`'dan sonraki her şeyi `spartaskctl install`'a verir; sorular terminalden okunur.
+
+Betiği önce okumak isteyen: `curl -fsSL https://get.spartask.ai -o install.sh && less install.sh && sudo sh install.sh -activation <kod> -license-server https://accounts.spartask.ai`. Elle kurulum da aynıdır: paketi indirip açın ve `sudo ./spartaskctl install -activation <kod> -license-server https://accounts.spartask.ai` çalıştırın.
 
 `install` sürümü, yöneticinin e-postasını, adını ve şifresini sorar; sonra:
 
@@ -67,7 +76,7 @@ sudo ./spartaskctl install
 Örnekler:
 
 ```bash
-# Platform sunucusu (spartask.ai, Cloudflare arkasında, marketplace dahil, imajlar private)
+# Platform sunucusu (spartask.ai, Cloudflare arkasında, marketplace dahil; marketplace imajları private)
 # -marketplace-signing-key: şifre yöneticisindeki ED25519_PRIVATE_KEY'i içeren dosya (yeni anahtar üretilmez)
 sudo ./spartaskctl install -domain spartask.ai -cloudflare -with-marketplace -marketplace-signing-key /root/marketplace.key \
      -registry-user <github-kullanıcısı>
@@ -78,7 +87,7 @@ sudo ./spartaskctl install -domain spartask.local -tls internal
 
 > **Önemli:** `.env` içindeki `SECRET_KEY`, veri kaynağı / mail sunucusu / yapay zeka şifrelerini; `BACKUP_ENCRYPTION_KEY` ise yedekleri şifreler. Kurulumdan sonra `.env`'in bir kopyasını şifre yöneticisine koyun; bu anahtarlar olmadan yedekler açılamaz.
 
-Private imajlar için `-registry-user` ile `read:packages` yetkili bir GitHub token'ı sorulur (veya önceden `docker login ghcr.io`).
+SparTask imajı (`ghcr.io/spartaskai/spartask`) public'tir; giriş gerekmez. Marketplace imajları (yalnızca platform sunucusunda) private'tır: `-registry-user` ile `read:packages` yetkili bir GitHub token'ı sorulur (veya önceden `docker login ghcr.io`).
 
 ## Günlük işletim
 

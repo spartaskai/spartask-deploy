@@ -1,8 +1,10 @@
 # Publishes the installation bundle: compose files, Caddy config, templates and spartaskctl.
 #
 # Release:  git tag v1.0.0 && git push origin v1.0.0
-# Assets:   spartask-deploy-linux-amd64.tar.gz, spartask-deploy-linux-arm64.tar.gz,
-#           spartask-deploy-windows-amd64.zip  (stable names: .../releases/latest/download/<asset>)
+# Assets:   spartask-deploy-linux-amd64.tar.gz, spartask-deploy-windows-amd64.zip, install.sh,
+#           SHA256SUMS (x86_64 only: the Spartask image is built for linux/amd64)
+#           (stable names: .../releases/latest/download/<asset>; get.spartask.ai redirects to
+#           .../latest/download/install.sh)
 #
 # Optional repository variable SPARTASK_VERSION: default Spartask release offered by `install`.
 name: release
@@ -25,6 +27,8 @@ jobs:
       - name: Test
         working-directory: spartaskctl
         run: go vet ./... && go test ./...
+      - name: Check install.sh
+        run: sh -n install.sh
       - name: Build bundles
         env:
           DEFAULT_VERSION: ${{ vars.SPARTASK_VERSION }}
@@ -32,7 +36,7 @@ jobs:
           set -eu
           mkdir -p dist
           files="compose.yml compose.marketplace.yml caddy demo .env.example marketplace.env.example README.md"
-          for target in linux/amd64 linux/arm64 windows/amd64; do
+          for target in linux/amd64 windows/amd64; do
             os="${target%/*}"; arch="${target#*/}"; name="spartask-deploy-$os-$arch"
             stage="dist/$name/spartask-deploy"; mkdir -p "$stage"
             cp -r $files "$stage/"
@@ -46,8 +50,9 @@ jobs:
               tar -C "dist/$name" -czf "dist/$name.tar.gz" spartask-deploy
             fi
           done
-          (cd dist && sha256sum *.tar.gz *.zip > SHA256SUMS)
+          cp install.sh dist/
+          (cd dist && sha256sum *.tar.gz *.zip install.sh > SHA256SUMS)
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.zip dist/SHA256SUMS --title "$GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.zip dist/install.sh dist/SHA256SUMS --title "$GITHUB_REF_NAME" --generate-notes
