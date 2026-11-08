@@ -2,9 +2,9 @@
 #
 # Release:  git tag v1.0.0 && git push origin v1.0.0
 # Assets:   spartask-deploy-linux-amd64.tar.gz, spartask-deploy-windows-amd64.zip, install.sh,
-#           SHA256SUMS (x86_64 only: the Spartask image is built for linux/amd64)
+#           install.ps1, SHA256SUMS (x86_64 only: the Spartask image is built for linux/amd64)
 #           (stable names: .../releases/latest/download/<asset>; get.spartask.ai redirects to
-#           .../latest/download/install.sh)
+#           .../latest/download/install.sh, get.spartask.ai/windows to .../install.ps1)
 #
 # Optional repository variable SPARTASK_VERSION: default Spartask release offered by `install`.
 name: release
@@ -29,6 +29,12 @@ jobs:
         run: go vet ./... && go test ./...
       - name: Check install.sh
         run: sh -n install.sh
+      - name: Check install.ps1
+        shell: pwsh
+        run: |
+          $e = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile("$PWD/install.ps1", [ref]$null, [ref]$e)
+          if ($e) { $e | ForEach-Object { "$($_.Extent.StartLineNumber): $($_.Message)" }; exit 1 }
       - name: Build bundles
         env:
           DEFAULT_VERSION: ${{ vars.SPARTASK_VERSION }}
@@ -50,9 +56,9 @@ jobs:
               tar -C "dist/$name" -czf "dist/$name.tar.gz" spartask-deploy
             fi
           done
-          cp install.sh dist/
-          (cd dist && sha256sum *.tar.gz *.zip install.sh > SHA256SUMS)
+          cp install.sh install.ps1 dist/
+          (cd dist && sha256sum *.tar.gz *.zip install.sh install.ps1 > SHA256SUMS)
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.zip dist/install.sh dist/SHA256SUMS --title "$GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.zip dist/install.sh dist/install.ps1 dist/SHA256SUMS --title "$GITHUB_REF_NAME" --generate-notes

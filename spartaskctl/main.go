@@ -10,6 +10,7 @@
 //	spartaskctl backup                     database dumps + storage + config into backups/
 //	spartaskctl restore <backups/TS>       replace the data with a backup
 //	spartaskctl demo apply <file.json>     create or reset a demo company (users, roles, data sources)
+//	spartaskctl hyperv install [flags]     Windows: a Hyper-V VM with Ubuntu, installed like a Linux server
 package main
 
 import (
@@ -60,6 +61,13 @@ Commands:
                                  without one no company can be created
   license renew                  renew the license with the license service now (the scheduler
                                  renews it 30 days before it expires)
+  hyperv install [-cpus 2] [-memory-gb 4] [-disk-gb 64] [-subnet CIDR] [-dns IP,IP]
+          <install options>      Windows Server (or Windows 10/11 Pro): runs SparTask in a Hyper-V
+                                 VM with Ubuntu 24.04 behind a NAT network; ports 80 and 443 of
+                                 this computer are forwarded to it, and the install options go to
+                                 spartaskctl install inside it. Run again after a restart or a
+                                 failure: it continues where it stopped
+  hyperv ssh [-- command]        a shell in that VM, or a command there
   version                        print the spartaskctl version
 `
 
@@ -114,6 +122,8 @@ func run(ctx context.Context, s stack, command string, args []string) error {
 		return runSystemProcesses(ctx, s, args)
 	case "license":
 		return runLicense(ctx, s, args)
+	case "hyperv":
+		return runHyperV(ctx, args)
 	case "version":
 		fmt.Println(toolVersion)
 		return nil

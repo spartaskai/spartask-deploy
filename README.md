@@ -1,6 +1,6 @@
 # Spartask Deploy
 
-Spartask'ı bir Linux sunucuya (bulut ya da müşterinin kendi sunucusu / on-premise) kurmak ve işletmek için gereken her şey:
+Spartask'ı bir Linux sunucuya (bulut ya da müşterinin kendi sunucusu / on-premise) ya da Hyper-V ile Windows Server'a kurmak ve işletmek için gereken her şey:
 
 | Dosya | Görevi |
 |---|---|
@@ -10,6 +10,7 @@ Spartask'ı bir Linux sunucuya (bulut ya da müşterinin kendi sunucusu / on-pre
 | `.env.example`, `marketplace.env.example` | Ayar şablonları (kurulumda `.env` / `marketplace.env` olarak, mode 600, üretilmiş şifrelerle yazılır) |
 | `spartaskctl` | Kurulum ve işletim aracı (Go): `install`, `update`, `backup`, `restore`, `status`, `logs`, `restart` |
 | `install.sh` | Tek komutla kurulum (`get.spartask.ai`): Docker'ı kurar, paketi indirip doğrular, `spartaskctl install`'u çalıştırır |
+| `install.ps1` | Windows Server'da tek komutla kurulum (`get.spartask.ai/windows`): paketi indirip doğrular, `spartaskctl hyperv install` ile Hyper-V sanal makinesine kurar |
 
 Uygulama imajları GitHub Actions tarafından sürüm etiketiyle üretilir (`ghcr.io/spartaskai/spartask:<sürüm>`). Sunucuda kaynak kod veya derleme yoktur; sadece imaj çekilir.
 
@@ -56,6 +57,35 @@ Betiği önce okumak isteyen: `curl -fsSL https://get.spartask.ai -o install.sh 
 Kurulumdan sonra firmanın yöneticisi stüdyodaki **Marketplace** bağlantısıyla SparTask hesabına girer ve ücretsiz executor'lu modülleri (ör. CRM) kurar; executor lisansları kuruluma bağlıdır ve scheduler onları 6 saatte bir yeniler. Ücretli executor'lar şimdilik yalnız spartask.ai'de kullanılabilir.
 
 Adresin DNS `A` kaydı sunucuyu göstermeli, 80 ve 443 portları internetten açık olmalıdır. Etkileşimsiz kurulumda (`-y`) yönetici bilgileri `-admin-email`, `-admin-name` bayraklarıyla, şifre `SPARTASK_ADMIN_PASSWORD` ortam değişkeniyle verilir. Firma adından adres kimliği üretilemezse (`-company-id` ile verilir) ya da kod süresi dolduysa hiçbir şey kurulmadan durur; sayfadan yeni kod alınır.
+
+### Windows Server'a kurulum
+
+Windows'ta SparTask bir Hyper-V sanal makinesinde (Ubuntu 24.04) çalışır; içine yukarıdaki `install.sh` aynen kurulur. PowerShell'i **Yönetici olarak çalıştır** ile açıp sayfadaki Windows komutunu çalıştırın:
+
+```powershell
+& ([scriptblock]::Create((irm https://get.spartask.ai/windows))) -activation <kod> -license-server https://accounts.spartask.ai
+```
+
+`get.spartask.ai/windows` bu deponun son release'indeki `install.ps1`'dir (`.../releases/latest/download/install.ps1`). Betik `spartask-deploy-windows-amd64.zip`'i indirir, `SHA256SUMS` ile doğrular, `C:\ProgramData\SparTask`'a açar ve `spartaskctl hyperv install`'u verilen bayraklarla çalıştırır (`$env:SPARTASK_DEPLOY_VERSION = 'v1.2.0'` belirli sürüm). `spartaskctl hyperv install` sırayla:
+
+1. Yönetici yetkisini, Hyper-V'yi ve OpenSSH istemcisini (`ssh.exe`) denetler. Hyper-V kapalıysa açar (Windows Server'da rol, Windows 10/11 Pro'da özellik) ve durur: Windows'u yeniden başlatıp **aynı komutu** tekrar çalıştırırsınız.
+2. `SparTask` adlı iç sanal anahtarı ve NAT ağını kurar (varsayılan `172.30.230.0/24`: bilgisayar `.1`, sanal makine `.10`), bilgisayarın 80 ve 443 TCP portlarını sanal makineye yönlendirir ve Windows Güvenlik Duvarı'nda bu portları açar. Ağ bilgisayarın bir adresiyle ya da başka bir NAT ağıyla (WSL, Docker Desktop) çakışıyorsa veya 80/443'ü başka bir program (IIS) kullanıyorsa hiçbir şey kurmadan nedenini söyler.
+3. Ubuntu 24.04 bulut imajını `cloud-images.ubuntu.com`'dan indirir, `SHA256SUMS` ile doğrular ve kendisi (ek program olmadan) Hyper-V diskine çevirir; cloud-init ayarını (sabit adres, DNS, `spartask` kullanıcısı ve bu bilgisayarın SSH anahtarı) ikinci bir diske yazar.
+4. 2. nesil sanal makineyi açar (Secure Boot, sabit bellek, otomatik checkpoint kapalı; Windows açılınca açılır, kapanınca düzgünce kapanır) ve başlatır.
+5. SSH ile bağlanıp ilk açılışın bitmesini bekler ve sanal makinede aynı sürümün `install.sh`'ını `--`'dan sonraki bayraklarla çalıştırır; sorular bu PowerShell penceresinden yanıtlanır, yönetici şifresi hiçbir dosyaya yazılmaz.
+
+Sanal makinenin donanımı ilk kurulumda `-cpus 2 -memory-gb 4 -disk-gb 64` bayraklarıyla, ağı `-subnet` ile, DNS sunucuları `-dns 10.0.0.2,10.0.0.3` ile seçilir (varsayılan: bilgisayarın kendi DNS sunucuları; bilgisayar DNS'i kendisi veriyorsa `-dns` gerekir). Bu bayraklar komutun herhangi bir yerine yazılabilir, gerisi `spartaskctl install`'a gider. Komut her adımda yarım kalanı tamamlar: yeniden başlatmadan, bir hatadan ya da kesilen bağlantıdan sonra aynı komut kaldığı yerden devam eder; kurulum bitmişse yalnızca yönetim komutlarını gösterir.
+
+Gereksinimler: Windows Server 2019 ya da sonrası (Windows 10/11 Pro da olur), x86_64, işlemcide sanallaştırma açık (sanal sunucuda sağlayıcının iç içe sanallaştırmaya izin vermesi gerekir), sanal makine için 4 GB bellek ve 64 GB disk. Adresin DNS `A` kaydı bu bilgisayarın internet adresini göstermeli, 80 ve 443 internetten açık olmalıdır (bulut sağlayıcının güvenlik duvarı dahil). Bilgisayar kendi internet adresiyle sanal makineye ulaşamaz (NAT); sitenin kontrolü başka bir cihazdan yapılır.
+
+Dosyalar `C:\ProgramData\SparTask` altındadır: `spartask-deploy\` (araç), `vm\` (sanal makine ve diskleri), `ssh\` (yalnız Administrators ve SYSTEM'in okuyabildiği SSH anahtarı). Kurulum sanal makinenin içinde `/opt/spartask`'tadır ve oradaki `spartaskctl` ile işletilir:
+
+```powershell
+C:\ProgramData\SparTask\spartask-deploy\spartaskctl.exe hyperv ssh -- sudo /opt/spartask/spartaskctl -dir /opt/spartask status
+C:\ProgramData\SparTask\spartask-deploy\spartaskctl.exe hyperv ssh      # sanal makinede kabuk
+```
+
+Yedekler sanal makinenin `/opt/spartask/backups/` klasörüne yazılır; Hyper-V'nin kendi yedeği (sanal makinenin dışa aktarımı) bunun yerine geçmez, tutarlı yedek `spartaskctl backup`'tır.
 
 ### Platform ve diğer kurulumlar
 
