@@ -36,6 +36,7 @@ type preflightProbes struct {
 	listen     func(port int) error                                         // nil when the port is free
 	fetch      func(ctx context.Context, url string) (time.Time, error)     // the server's Date header
 	lookup     func(ctx context.Context, host string) ([]netip.Addr, error) // DNS (the installation's address)
+	tags       func(ctx context.Context, image string) ([]string, error)    // release tags of the SparTask image
 	now        func() time.Time
 }
 
@@ -59,7 +60,8 @@ func defaultPreflightProbes(s stack) preflightProbes {
 			defer cancel()
 			return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 		},
-		now: time.Now,
+		tags: registryTags,
+		now:  time.Now,
 	}
 }
 

@@ -21,22 +21,26 @@ func loadInstalledEnv(s stack) (*envFile, error) {
 	return env, nil
 }
 
-// runUpdate switches the stack to another release: the new images are downloaded first (the
-// running release keeps serving), then a backup, migrations, restart and health check. When the
-// new release does not come up, .env is switched back; a database the new release's migrations
-// already changed is brought back with the pre-update backup.
 func runUpdate(ctx context.Context, s stack, args []string) error {
+	return update(ctx, s, args, registryTags)
+}
+
+// update switches the stack to another release (without a version: the latest release): the new
+// images are downloaded first (the running release keeps serving), then a backup, migrations,
+// restart and health check. When the new release does not come up, .env is switched back; a
+// database the new release's migrations already changed is brought back with the pre-update backup.
+func update(ctx context.Context, s stack, args []string, tags func(context.Context, string) ([]string, error)) error {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	noBackup := fs.Bool("no-backup", false, "skip the pre-update backup")
 	marketplaceVersion := fs.String("marketplace-version", "", "also switch the marketplace to this release")
 	if err := fs.Parse(reorderFlags(args)); err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
-		return errors.New("usage: spartaskctl update <version> [-marketplace-version X] [-no-backup]")
+	if fs.NArg() > 1 {
+		return errors.New("usage: spartaskctl update [version] [-marketplace-version X] [-no-backup]")
 	}
 	version := strings.TrimPrefix(fs.Arg(0), "v")
-	if !versionPattern.MatchString(version) {
+	if version != "" && !versionPattern.MatchString(version) {
 		return fmt.Errorf("invalid version %q, e.g. 1.2.0", version)
 	}
 	mpVersion := strings.TrimPrefix(*marketplaceVersion, "v")
@@ -50,6 +54,17 @@ func runUpdate(ctx context.Context, s stack, args []string) error {
 		return err
 	}
 	previous, previousMP := env.Get("SPARTASK_VERSION"), env.Get("MARKETPLACE_VERSION")
+	if version == "" {
+		latest, err := latestRelease(ctx, tags, env.Get("SPARTASK_IMAGE"))
+		if err != nil {
+			return fmt.Errorf("the latest SparTask release could not be read (%w); pass the version: spartaskctl update <version>", err)
+		}
+		if latest == previous && mpVersion == "" {
+			fmt.Printf("SparTask %s is the latest release; nothing to update.\n", previous)
+			return nil
+		}
+		version = latest
+	}
 	target := map[string]string{"SPARTASK_VERSION": version}
 	if mpVersion != "" {
 		target["MARKETPLACE_VERSION"] = mpVersion

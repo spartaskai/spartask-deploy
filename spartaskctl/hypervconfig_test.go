@@ -194,7 +194,14 @@ func TestPowerShellScripts(t *testing.T) {
 	if s := resizeDiskScript(`C:\vm\new.vhdx`, 64<<30); !strings.Contains(s, "Resize-VHD -Path 'C:\\vm\\new.vhdx' -SizeBytes 68719476736") {
 		t.Errorf("resize script: %s", s)
 	}
-	for _, s := range []string{hostInfoScript(), enableHyperVScript(), network, vm, startVMScript(), natPrefixScript(), convertDiskScript("a.vhd", "a.vhdx")} {
+	remove := removeScript()
+	for _, want := range []string{"Remove-VM -Name 'SparTask' -Force", "Get-NetNatStaticMapping -NatName 'SparTask'", "Remove-NetNat", "Remove-VMSwitch -Force",
+		"Get-NetFirewallRule -Name 'SparTask-Web'"} {
+		if !strings.Contains(remove, want) {
+			t.Errorf("remove script has no %q", want)
+		}
+	}
+	for _, s := range []string{hostInfoScript(), enableHyperVScript(), network, vm, startVMScript(), natPrefixScript(), convertDiskScript("a.vhd", "a.vhdx"), remove} {
 		if !strings.HasPrefix(s, "$ErrorActionPreference = 'Stop'") || !strings.Contains(s, "exit 1") {
 			t.Errorf("script without error handling:\n%s", s)
 		}
@@ -290,6 +297,7 @@ func TestPowerShellSyntax(t *testing.T) {
 		"vm":      createVMScript(hypervVM{cpus: 2, memoryGB: 4, diskGB: 64}, `C:\vm`, `C:\vm\d.vhdx`, `C:\vm\s.vhdx`),
 		"start":   startVMScript(),
 		"nat":     natPrefixScript(),
+		"remove":  removeScript(),
 	}
 	const check = `$e = $null; [void][System.Management.Automation.Language.Parser]::ParseInput([Console]::In.ReadToEnd(), [ref]$null, [ref]$e); if ($e) { $e | ForEach-Object { "$($_.Extent.StartLineNumber): $($_.Message)" }; exit 1 }`
 	for name, script := range scripts {

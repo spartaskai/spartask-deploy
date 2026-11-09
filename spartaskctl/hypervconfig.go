@@ -291,6 +291,22 @@ if (-not (Get-NetFirewallRule -Name ` + psQuote(hypervFirewall) + ` -ErrorAction
 }`)
 }
 
+// removeScript removes what hyperv install set up on this computer: the VM (its disk files are
+// deleted by the caller), the forwarded ports, the NAT network, the virtual switch and the
+// firewall rule. Each step is skipped when its part is already gone.
+func removeScript() string {
+	name := psQuote(hypervName)
+	return psScript(`$v = Get-VM -Name ` + name + ` -ErrorAction SilentlyContinue
+if ($v) {
+  if ($v.State -ne 'Off') { Stop-VM -Name ` + name + ` -TurnOff -Force }
+  Remove-VM -Name ` + name + ` -Force
+}
+Get-NetNatStaticMapping -NatName ` + name + ` -ErrorAction SilentlyContinue | Remove-NetNatStaticMapping -Confirm:$false
+Get-NetNat -Name ` + name + ` -ErrorAction SilentlyContinue | Remove-NetNat -Confirm:$false
+Get-VMSwitch -Name ` + name + ` -ErrorAction SilentlyContinue | Remove-VMSwitch -Force
+Get-NetFirewallRule -Name ` + psQuote(hypervFirewall) + ` -ErrorAction SilentlyContinue | Remove-NetFirewallRule`)
+}
+
 // convertDiskScript turns a fixed VHD into a dynamic VHDX (generation 2 VMs use VHDX only) and
 // removes the VHD.
 func convertDiskScript(vhd, vhdx string) string {

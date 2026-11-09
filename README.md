@@ -79,7 +79,7 @@ Aktivasyon kodunu almak için bir SparTask hesabı gerekir; marketplace'e de bu 
         -tls files -cert /root/spartask.pem -key /root/spartask.key
    ```
 
-3. Soruları yanıtlayın: SparTask sürümü (Enter ile önerileni seçin), yöneticinin e-postası, adı ve şifresi (12–72 karakter, iki kez), sertifika türü, günlük yedek görevi.
+3. Soruları yanıtlayın: SparTask sürümü (Enter ile son sürümü seçin; kurulum o sürüme sabitlenir), yöneticinin e-postası, adı ve şifresi (12–72 karakter, iki kez), sertifika türü, günlük yedek görevi.
 4. Komut bitince SparTask'ın adresini ve yöneticiyi yazar. Adresi tarayıcıda açıp yöneticiyle girin.
 
 Komut sırasıyla şunları yapar:
@@ -152,6 +152,16 @@ C:\ProgramData\SparTask\spartask-deploy\spartaskctl.exe hyperv ssh    # sanal ma
 
 Bu belgedeki diğer komutlar sanal makinenin içinde aynen çalışır.
 
+Kurulum sürerken PowerShell penceresine tıklamanız işi durdurmaz; komut pencerenin seçim modunu (QuickEdit) kurulum boyunca kapatır.
+
+**Kaldırmak:** Önce saklamak istediğiniz yedekleri sanal makineden alın, sonra yönetici PowerShell'inde:
+
+```powershell
+C:\ProgramData\SparTask\spartask-deploy\spartaskctl.exe hyperv uninstall
+```
+
+Komut onay ister; sanal makineyi tüm verisiyle, ağını, yönlendirilen portları ve güvenlik duvarı kuralını siler. Sonunda `C:\ProgramData\SparTask` klasörünü elle silebilirsiniz.
+
 ## 3. Kurulumu kontrol edin
 
 1. Adresi tarayıcıda açın; sertifika uyarısı olmamalı.
@@ -176,7 +186,7 @@ Komutlar sunucuda `/opt/spartask` klasöründe çalıştırılır (`cd /opt/spar
 |---|---|
 | Her şey çalışıyor mu? | `sudo ./spartaskctl status` |
 | Logları izlemek (Ctrl+C ile çıkılır) | `sudo ./spartaskctl logs api` (ayrıca `worker`, `scheduler`, `migrate`, `caddy`, `db`) |
-| Yeni sürüme geçmek | `sudo ./spartaskctl update 1.4.0` |
+| Son sürüme geçmek | `sudo ./spartaskctl update` (belirli bir sürüm: `sudo ./spartaskctl update 1.4.0`) |
 | Ayar değiştirmek | `.env`'i düzenleyin, sonra `sudo ./spartaskctl restart` |
 | Eksik ayarları görmek | `sudo ./spartaskctl config -check` |
 | Elle yedek almak | `sudo ./spartaskctl backup` |
@@ -194,7 +204,8 @@ Komutlar sunucuda `/opt/spartask` klasöründe çalıştırılır (`cd /opt/spar
 
 ```bash
 cd /opt/spartask
-sudo ./spartaskctl update 1.4.0
+sudo ./spartaskctl update          # son SparTask sürümüne
+sudo ./spartaskctl update 1.4.0    # belirli bir sürüme
 ```
 
 `update` sırasıyla:

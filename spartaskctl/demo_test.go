@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -133,7 +134,8 @@ func TestSaveDemoPasswords(t *testing.T) {
 	if bak, _ := os.ReadFile(filepath.Join(dir, ".env.bak")); string(bak) != original {
 		t.Fatalf(".env.bak = %q", bak)
 	}
-	if info, _ := os.Stat(filepath.Join(dir, ".env")); info.Mode().Perm() != 0o600 {
+	// Unix file modes only: installations run on Linux (Windows reports 0666).
+	if info, _ := os.Stat(filepath.Join(dir, ".env")); runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf(".env mode = %v", info.Mode().Perm())
 	}
 }

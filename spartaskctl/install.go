@@ -45,7 +45,7 @@ func parseInstallFlags(args []string) (installOptions, error) {
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	var o installOptions
 	fs.StringVar(&o.domain, "domain", "", "application domain, e.g. spartask.ai (tenants use *.domain)")
-	fs.StringVar(&o.version, "version", defaultVersion, "SparTask release to install, e.g. 1.0.0")
+	fs.StringVar(&o.version, "version", "", "SparTask release to install, e.g. 1.0.0 (default: the latest release)")
 	fs.StringVar(&o.tls, "tls", "", `"files" (certificate files; default) or "internal" (Caddy's own CA); with -activation "acme" (Let's Encrypt; default) or "files"`)
 	fs.StringVar(&o.certFile, "cert", "", "certificate file to copy to certs/cert.pem (PEM, full chain)")
 	fs.StringVar(&o.keyFile, "key", "", "private key file to copy to certs/key.pem (PEM)")
@@ -90,6 +90,11 @@ func install(ctx context.Context, s stack, args []string, probes preflightProbes
 	if err := checkDocker(ctx); err != nil {
 		return err
 	}
+	template, err := readEnvFile(s.path(".env.example"))
+	if err != nil {
+		return err
+	}
+	o.version = offerLatest(ctx, probes.tags, template.Get("SPARTASK_IMAGE"), o.version)
 	p := newPrompter(o.assumeYes)
 	if err := askInstallOptions(p, &o); err != nil {
 		return err

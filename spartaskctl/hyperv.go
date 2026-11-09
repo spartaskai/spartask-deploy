@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"flag"
 	"fmt"
 	"net/http"
 	"net/netip"
@@ -20,7 +21,8 @@ import (
 const hypervUsage = `usage:
   spartaskctl hyperv install [-cpus 2] [-memory-gb 4] [-disk-gb 64] [-subnet 172.30.230.0/24]
                              [-dns IP,IP] <spartaskctl install options>
-  spartaskctl hyperv ssh [command]`
+  spartaskctl hyperv ssh [command]
+  spartaskctl hyperv uninstall [-yes]`
 
 // runHyperV runs SparTask on Windows: a Hyper-V VM with Ubuntu, reachable through ports 80 and
 // 443 of the host, where install.sh installs it like on any Linux server.
@@ -35,11 +37,15 @@ func runHyperV(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	// A click in the console window would select text and suspend the installation (QuickEdit).
+	defer disableQuickEdit()()
 	switch args[0] {
 	case "install":
 		return hypervInstall(ctx, paths, args[1:])
 	case "ssh":
 		return hypervShell(ctx, paths, args[1:])
+	case "uninstall":
+		return hypervUninstall(ctx, paths, args[1:])
 	}
 	return errors.New(hypervUsage)
 }
@@ -438,6 +444,39 @@ func hypervShell(ctx context.Context, paths hypervPaths, args []string) error {
 		args = args[1:]
 	}
 	return vmSSH{paths: paths, host: net.vm}.run(ctx, args...)
+}
+
+// hypervUninstall removes SparTask from this computer: the VM with all its data, its network,
+// forwarded ports and firewall rule, and the files under %ProgramData%\SparTask except this tool,
+// which cannot delete itself while it runs.
+func hypervUninstall(ctx context.Context, paths hypervPaths, args []string) error {
+	fs := flag.NewFlagSet("hyperv uninstall", flag.ContinueOnError)
+	yes := fs.Bool("yes", false, "do not ask for confirmation")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if !*yes {
+		fmt.Printf("This deletes the %s VM with ALL its data (database, files and the backups inside it).\n", hypervName)
+		fmt.Println("Copy the backups you want to keep first: spartaskctl hyperv ssh -- sudo ls /opt/spartask/backups")
+		ok, err := newPrompter(false).confirm("Delete SparTask from this computer?", false)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errors.New("uninstall cancelled")
+		}
+	}
+	if _, err := powershell(ctx, removeScript()); err != nil {
+		return fmt.Errorf("remove the %s VM and network: %w (run PowerShell as administrator)", hypervName, err)
+	}
+	for _, dir := range []string{paths.vmDir(), paths.images(), paths.sshDir()} {
+		if err := os.RemoveAll(dir); err != nil {
+			return fmt.Errorf("delete %s: %w", dir, err)
+		}
+	}
+	fmt.Printf("SparTask is removed from this computer. Delete %s yourself to remove this tool too.\n", paths.root)
+	fmt.Println("The installation's license stays registered on the license service; a new installation gets a new activation code.")
+	return nil
 }
 
 // powershell runs a script with Windows PowerShell and returns its output. The script travels

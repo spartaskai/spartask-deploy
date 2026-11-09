@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -89,8 +90,14 @@ func readyServer() preflightProbes {
 		lookup: func(context.Context, string) ([]netip.Addr, error) {
 			return []netip.Addr{netip.MustParseAddr("203.0.113.10")}, nil
 		},
-		now: time.Now,
+		tags: releaseTags,
+		now:  time.Now,
 	}
+}
+
+// releaseTags are the SparTask image's tags in the tests: 1.4.1 is the latest stable release.
+func releaseTags(context.Context, string) ([]string, error) {
+	return []string{"1.4.0", "v1.3.9", "1.4.1", "1.5.0-rc1", "latest", "sha-0f3c2a1"}, nil
 }
 
 func activationArgs(code string) []string {
@@ -361,5 +368,54 @@ func TestUpdateDownloadsFirstAndNamesTheBackup(t *testing.T) {
 	}
 	if env, err := loadInstalledEnv(s); err != nil || env.Get("SPARTASK_VERSION") != "1.1.0" {
 		t.Fatalf(".env must be back on 1.1.0: %v", err)
+	}
+}
+
+// Without -version the installation takes the latest stable release and pins it in .env.
+func TestInstallPinsTheLatestRelease(t *testing.T) {
+	s, _ := installFixture(t)
+	args := activationArgs("KOD-1")
+	args = slices.Delete(args, 1, 3) // drop -version 1.2.3
+	if slices.Contains(args, "-version") {
+		t.Fatalf("args still pin a version: %v", args)
+	}
+	if err := install(context.Background(), s, args, readyServer()); err != nil {
+		t.Fatal(err)
+	}
+	env, err := loadInstalledEnv(s)
+	if err != nil || env.Get("SPARTASK_VERSION") != "1.4.1" {
+		t.Fatalf("SPARTASK_VERSION = %q (%v), want the latest stable release 1.4.1", env.Get("SPARTASK_VERSION"), err)
+	}
+}
+
+// update without a version moves to the latest release, and does nothing when it runs already.
+func TestUpdateToTheLatestRelease(t *testing.T) {
+	s, bin := installFixture(t)
+	env, _, err := buildEnv(s, installOptions{version: "1.4.0", tls: tlsFiles, domain: "spartask.example"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := env.Save(s.path(".env")); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepareDirectories(s, installOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := update(context.Background(), s, nil, releaseTags); err != nil {
+		t.Fatal(err)
+	}
+	if env, err := loadInstalledEnv(s); err != nil || env.Get("SPARTASK_VERSION") != "1.4.1" {
+		t.Fatalf("after update: %v", err)
+	}
+	calls := len(readFile(t, filepath.Join(bin, "calls.log")))
+	if err := update(context.Background(), s, nil, releaseTags); err != nil {
+		t.Fatal(err)
+	}
+	if len(readFile(t, filepath.Join(bin, "calls.log"))) != calls {
+		t.Fatal("an installation on the latest release was updated again")
+	}
+	unreachable := func(context.Context, string) ([]string, error) { return nil, errors.New("no network") }
+	if err := update(context.Background(), s, nil, unreachable); err == nil || !strings.Contains(err.Error(), "spartaskctl update <version>") {
+		t.Fatalf("unreachable registry: %v", err)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -25,6 +26,9 @@ func TestEnvFileKeepsCommentsAndOrder(t *testing.T) {
 }
 
 func TestSecretFileIsPrivate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no Unix file modes; installations run on Linux")
+	}
 	path := filepath.Join(t.TempDir(), ".env")
 	if err := parseEnv([]byte("X=1\n")).Save(path); err != nil {
 		t.Fatal(err)

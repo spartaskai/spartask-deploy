@@ -2,7 +2,7 @@
 //
 //	spartaskctl install [flags]            first installation (asks for domain, version, TLS ...)
 //	spartaskctl install -activation CODE   a customer's installation activated on the on-prem page
-//	spartaskctl update <version>           download, backup, switch release, migrate, health check
+//	spartaskctl update [version]           download, backup, switch release, migrate, health check
 //	spartaskctl restart                    apply .env changes
 //	spartaskctl config [-check]            add new settings, generate secrets, report what is missing
 //	spartaskctl status                     containers and schema migrations
@@ -40,6 +40,7 @@ Commands:
                                  first installation in DIR (default: the current directory)
   install -activation CODE -license-server URL [-admin-email E] [-admin-name N]
           [-tls acme|files] [-cert F -key F] [-company-id ID] [-version V] [-registry-user U] [-y]
+                                 (-version defaults to the latest SparTask release)
                                  a customer's installation with the code from the on-prem page:
                                  its address, license and company come with the code; the
                                  certificate comes from Let's Encrypt (acme) or the company's
@@ -47,8 +48,9 @@ Commands:
                                  The server is checked first (nothing is changed when it is not
                                  ready); after a later failure run the same command again: it
                                  continues where it stopped
-  update <version> [-marketplace-version V] [-no-backup]
-                                 download the release, backup, switch, apply migrations, health check
+  update [version] [-marketplace-version V] [-no-backup]
+                                 download the release (default: the latest), backup, switch, apply
+                                 migrations, health check
   restart                        apply .env changes (docker compose up -d)
   config [-check]                compare .env with this package's template: add new settings,
                                  generate secrets, explain what you still have to fill in
@@ -73,6 +75,8 @@ Commands:
                                  spartaskctl install inside it. Run again after a restart or a
                                  failure: it continues where it stopped
   hyperv ssh [-- command]        a shell in that VM, or a command there
+  hyperv uninstall [-yes]        remove that VM with all its data, its network, forwarded ports
+                                 and firewall rule
   version                        print the spartaskctl version
 `
 

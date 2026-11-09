@@ -45,7 +45,7 @@ if [ -e "$dir/.env" ]; then
 fi
 
 if ! command -v docker >/dev/null 2>&1; then
-	echo "spartask: installing Docker (https://get.docker.com)"
+	echo "spartask: installing Docker (https://get.docker.com); this takes a few minutes and prints little, please wait"
 	curl -fsSL https://get.docker.com | sh
 fi
 
