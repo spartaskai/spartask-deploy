@@ -140,6 +140,13 @@ func TestParseHypervArgs(t *testing.T) {
 	if want := []string{"-activation", "ABC-123", "-license-server", "https://accounts.example.test", "-y"}; !reflect.DeepEqual(o.install, want) {
 		t.Fatalf("install args %q", o.install)
 	}
+	o, err = parseHypervArgs([]string{"-activation", "K", "-tls", "files", "-cert", `C:\certs\firma.pem`, "-key=C:\\certs\\firma.key"})
+	if err != nil || o.certFile != `C:\certs\firma.pem` || o.keyFile != `C:\certs\firma.key` {
+		t.Fatalf("certificate files: %+v %v", o, err)
+	}
+	if want := []string{"-activation", "K", "-tls", "files", "-cert", hypervCertPath, "-key", hypervKeyPath}; !reflect.DeepEqual(o.vmInstallArgs(), want) {
+		t.Fatalf("VM install args %q", o.vmInstallArgs())
+	}
 	o, err = parseHypervArgs(nil)
 	if err != nil || o.subnet != defaultHypervSubnet || o.subnetSet || o.vm != (hypervVM{cpus: 2, memoryGB: 4, diskGB: 64}) {
 		t.Fatalf("defaults %+v %v", o, err)

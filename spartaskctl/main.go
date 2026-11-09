@@ -2,7 +2,7 @@
 //
 //	spartaskctl install [flags]            first installation (asks for domain, version, TLS ...)
 //	spartaskctl install -activation CODE   a customer's installation activated on the on-prem page
-//	spartaskctl update <version>           backup, switch release, migrate, health check
+//	spartaskctl update <version>           download, backup, switch release, migrate, health check
 //	spartaskctl restart                    apply .env changes
 //	spartaskctl config [-check]            add new settings, generate secrets, report what is missing
 //	spartaskctl status                     containers and schema migrations
@@ -36,14 +36,19 @@ Usage: spartaskctl [-dir DIR] <command> [arguments]
 
 Commands:
   install [-domain D] [-version V] [-tls files|internal] [-cert F -key F] [-cloudflare]
-          [-registry-user U] [-with-marketplace] [-marketplace-url URL] [-y]
+          [-registry-user U] [-with-marketplace] [-marketplace-url URL] [-backup-job=false] [-y]
                                  first installation in DIR (default: the current directory)
   install -activation CODE -license-server URL [-admin-email E] [-admin-name N]
-          [-company-id ID] [-version V] [-registry-user U] [-y]
+          [-tls acme|files] [-cert F -key F] [-company-id ID] [-version V] [-registry-user U] [-y]
                                  a customer's installation with the code from the on-prem page:
-                                 its address, license and company come with the code
+                                 its address, license and company come with the code; the
+                                 certificate comes from Let's Encrypt (acme) or the company's
+                                 files (an address reachable only in the company network or VPN)
+                                 The server is checked first (nothing is changed when it is not
+                                 ready); after a later failure run the same command again: it
+                                 continues where it stopped
   update <version> [-marketplace-version V] [-no-backup]
-                                 backup, switch release, apply migrations, health check
+                                 download the release, backup, switch, apply migrations, health check
   restart                        apply .env changes (docker compose up -d)
   config [-check]                compare .env with this package's template: add new settings,
                                  generate secrets, explain what you still have to fill in

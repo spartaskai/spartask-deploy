@@ -28,7 +28,7 @@ Uygulama imajları GitHub Actions tarafından sürüm etiketiyle üretilir (`ghc
 
 ## Kurulum
 
-**Gereksinimler:** Ubuntu 22.04/24.04 (2 vCPU, 4 GB RAM önerilir), Docker Engine + Compose eklentisi (`curl -fsSL https://get.docker.com | sh`), domain için `A` kaydı; firmalar `<firma>.<domain>` adresinde açılacaksa (spartask.ai) `*` (wildcard) kaydı da.
+**Gereksinimler:** x86_64 Linux sunucu; denenen sistem Ubuntu 24.04 LTS. Pilot başlangıç boyutu 2 vCPU / 4 GB bellek ve en az 10 GB boş disk (Hyper-V sanal makinesi varsayılan 64 GB); kullanıcı ve süreç sayısı büyüdükçe ölçüp artırın, bu bir kapasite sözü değildir. Docker Engine + Compose eklentisi (yoksa `install.sh` kurar), domain için DNS kaydı; firmalar `<firma>.<domain>` adresinde açılacaksa (spartask.ai) `*` (wildcard) kaydı da.
 
 ### Müşteri kurulumu (aktivasyon kodu)
 
@@ -43,20 +43,61 @@ curl -fsSL https://get.spartask.ai | sudo sh -s -- -activation <kod> -license-se
 - yalnızca Linux ve x86_64 (amd64) sunucuda çalışır, root ister,
 - Docker yoksa `https://get.docker.com` ile kurar,
 - son release'in `spartask-deploy-linux-amd64.tar.gz` paketini indirir, release'in `SHA256SUMS`'u ile doğrular, `/opt/spartask`'a açar (`SPARTASK_DIR` ile başka klasör; `SPARTASK_DEPLOY_VERSION=v1.2.0` ile belirli sürüm),
-- `/opt/spartask/.env` zaten varsa hiçbir şeye dokunmadan durur (kurulu sunucu `./spartaskctl update` ile güncellenir),
+- `/opt/spartask`'ta yarım kalmış bir kurulum varsa (`install-state.json`) yeniden indirmeden onu sürdürür; kurulum bitmişse hiçbir şeye dokunmadan durur (kurulu sunucu `./spartaskctl update` ile güncellenir),
 - `--`'dan sonraki her şeyi `spartaskctl install`'a verir; sorular terminalden okunur.
+
+Docker sunucuda zaten kuruluysa betik ona dokunmaz. Kurumsal sunucularda Docker'ı kurumun kendi paket deposundan ya da Docker'ın resmi apt deposundan, sürüm politikanızla kurmanızı öneririz; `get.docker.com` hızlı başlangıç içindir.
 
 Betiği önce okumak isteyen: `curl -fsSL https://get.spartask.ai -o install.sh && less install.sh && sudo sh install.sh -activation <kod> -license-server https://accounts.spartask.ai`. Elle kurulum da aynıdır: paketi indirip açın ve `sudo ./spartaskctl install -activation <kod> -license-server https://accounts.spartask.ai` çalıştırın.
 
-`install` sürümü, yöneticinin e-postasını, adını ve şifresini sorar; sonra:
+`install` sürümü, yöneticinin e-postasını, adını ve şifresini ve sertifikanın nereden geleceğini sorar:
 
-1. Kurulum anahtarını üretir ve kodu bu anahtarla imzalayıp lisans servisinden lisansı alır. Adres ve firma adı sayfada girilenlerdir.
-2. Tek adresli `.env` yazar: `SPARTASK_SITES` yalnızca o adres, `SPARTASK_ROOT_TENANT` firmanın adresi (firma kök adreste açılır), `SPARTASK_TLS` yöneticinin e-postası (Caddy sertifikayı Let's Encrypt'ten alır), `SPARTASK_SIGNUP_MODE=closed`. Lisans servisi bir marketplace bildiriyorsa kurulumu ona bağlar (`SPARTASK_MARKETPLACE_URL`, `MARKETPLACE_API_URL`, `MARKETPLACE_ALLOWED_ORIGINS`; `-marketplace-url` başka birini seçer) ve marketplace'in firmayı tanıdığı kimliği yazar (`SPARTASK_MARKETPLACE_COMPANY=onprem.<kurulum kimliği>`).
-3. Yığını başlatır, lisansı yükler, firmayı ve yöneticisini açar.
+| Kullanıcılar adrese nereden ulaşır? | Sertifika | Gerekenler |
+|---|---|---|
+| İnternetten | `-tls acme` (varsayılan): Caddy Let's Encrypt'ten alır ve yeniler | Adresin DNS `A` kaydı sunucunun internet adresini gösterir; 80 ve 443 internetten açıktır |
+| Yalnız şirket ağından ya da VPN'den | `-tls files -cert <dosya> -key <dosya>`: şirketin sertifikası (tam zincir, PEM) | Şirket DNS'i adresi sunucuya çözer; sertifika adresi kapsar. Lisans servisine ve imaj adreslerine giden HTTPS açıktır |
+
+Sonra sırayla:
+
+1. **Ön kontrol (hiçbir şey değiştirmez):** bellek (en az 4 GB), kurulum klasöründe ve Docker'ın veri klasöründe boş disk (en az 10 GB), 80 ve 443 portlarının boş olduğu, sunucunun ulaşması gereken adresler (aşağıda) ve sunucu saati. Sorunların hepsini birden, ne yapılacağıyla yazar (ör. "port 443: another program uses it … stop that program or install SparTask on a separate server"); bir sorun varsa hiçbir şey yazmadan ve aktivasyon kodunu kullanmadan durur.
+2. Kurulum anahtarını üretir ve `.env`'i, kurulumun durumunu tutan `install-state.json` ile birlikte kaydeder (ikisi de mode 600; yönetici şifresi hiçbir dosyaya yazılmaz).
+3. Kodu bu anahtarla imzalayıp lisans servisinden lisansı alır; adres ve firma adı sayfada girilenlerdir. Tek adresli `.env`: `SPARTASK_SITES` yalnızca o adres, `SPARTASK_ROOT_TENANT` firmanın adresi (firma kök adreste açılır), `SPARTASK_TLS` yöneticinin e-postası (Let's Encrypt) ya da `/certs/cert.pem /certs/key.pem`, `SPARTASK_SIGNUP_MODE=closed`. Lisans servisi bir marketplace bildiriyorsa kurulumu ona bağlar (`SPARTASK_MARKETPLACE_URL`, `MARKETPLACE_API_URL`, `MARKETPLACE_ALLOWED_ORIGINS`; `-marketplace-url` başka birini seçer) ve marketplace'in firmayı tanıdığı kimliği yazar (`SPARTASK_MARKETPLACE_COMPANY=onprem.<kurulum kimliği>`).
+4. Adresi denetler: sertifika dosyaları seçildiyse sertifikanın anahtarıyla eşleştiğini, şu an geçerli olduğunu ve adresi kapsadığını; Let's Encrypt seçildiyse adresin DNS kaydı olduğunu.
+5. Yığını başlatır, lisansı yükler, firmayı ve yöneticisini açar, günlük yedek görevini kurar ve `install-state.json`'ı siler.
+
+**Yarım kalan kurulum:** 2. adımdan sonraki bir hata (ağ kesildi, imaj inmedi, DNS kaydı eksik, sertifika yanlış) düzeltilip **aynı komut** tekrar çalıştırılır; kurulum kaydedilen ayarlarla kaldığı yerden devam eder. Lisans alındıysa yeniden aktivasyon yapılmaz; alınmadıysa kod aynı kurulum anahtarıyla yeniden kullanılır. Kodun süresi dolduysa sayfadaki **Yeni kod** ile alınan kod `-activation` ile verilir, kurulum yine aynı anahtarla sürer. Firma henüz açılmadıysa yönetici şifresi yeniden sorulur.
 
 Kurulumdan sonra firmanın yöneticisi stüdyodaki **Marketplace** bağlantısıyla SparTask hesabına girer ve ücretsiz executor'lu modülleri (ör. CRM) kurar; executor lisansları kuruluma bağlıdır ve scheduler onları 6 saatte bir yeniler. Ücretli executor'lar şimdilik yalnız spartask.ai'de kullanılabilir.
 
-Adresin DNS `A` kaydı sunucuyu göstermeli, 80 ve 443 portları internetten açık olmalıdır. Etkileşimsiz kurulumda (`-y`) yönetici bilgileri `-admin-email`, `-admin-name` bayraklarıyla, şifre `SPARTASK_ADMIN_PASSWORD` ortam değişkeniyle verilir. Firma adından adres kimliği üretilemezse (`-company-id` ile verilir) ya da kod süresi dolduysa hiçbir şey kurulmadan durur; sayfadan yeni kod alınır.
+Etkileşimsiz kurulumda (`-y`) yönetici bilgileri `-admin-email`, `-admin-name` bayraklarıyla, şifre `SPARTASK_ADMIN_PASSWORD` ortam değişkeniyle verilir; günlük yedek görevi istenmiyorsa `-backup-job=false`. Firma adından adres kimliği üretilemezse `-company-id` ile verilir.
+
+#### Sunucunun ulaştığı adresler
+
+Kullanıcıların erişimi dışında sunucu yalnız dışarıya bağlantı kurar; içeriye yalnız 80/443 (Let's Encrypt'te internetten, sertifika dosyalarında şirket ağından) gerekir.
+
+| Adres | Ne zaman | Ne için |
+|---|---|---|
+| `ghcr.io`, `pkg-containers.githubusercontent.com` | kurulum ve güncelleme | SparTask imajı |
+| `registry-1.docker.io` ve Docker Hub'ın indirme adresleri | kurulum ve güncelleme | Caddy, PostgreSQL, NATS imajları |
+| `github.com`, `objects.githubusercontent.com` | kurulum ve güncelleme | `install.sh` ve `spartask-deploy` paketi |
+| `accounts.spartask.ai` | aktivasyonda; sonra periyodik (6 saatte bir kontrol, bitime 30 gün kala yenileme) | kurulum ve executor lisansları |
+| `marketplace.spartask.ai` | modül ya da executor kurulurken | paket indirme |
+| `acme-v02.api.letsencrypt.org` | yalnız Let's Encrypt seçildiyse, sertifika alınırken ve yenilenirken | sertifika |
+| `cloud-images.ubuntu.com` | yalnız Windows (Hyper-V) kurulumunda bir kez | Ubuntu imajı |
+| Ubuntu ve Docker paket depoları | sistem güncellemelerinde | işletim sistemi |
+| DNS, NTP (saat), SMTP | sürekli / gerektikçe | ad çözme, saat senkronizasyonu, e-posta (`INVITATION_SMTP_*`) |
+| Firmaların kendi entegrasyonları | süreçler çalışırken | veri kaynakları, yapay zeka sağlayıcıları, webhook'lar |
+
+Lisans servisine bağlantı sürekli gerekmez: ulaşılamazsa lisans süresi boyunca ve bitiminden sonra 30 gün daha her şey çalışır; sonra yeni firma açılamaz ve marketplace kapanır, çalışan süreçler sürer. Proxy arkasındaki sunucuda `HTTPS_PROXY` hem kurulum komutuna (`curl -fsSL https://get.spartask.ai | sudo HTTPS_PROXY=http://proxy:3128 sh -s -- ...`; `sudo` ortamı aktarmaz) hem Docker'ın kendi proxy ayarına verilmelidir; proxy sertifikaları değiştiriyorsa kurumun kök sertifikası sisteme eklenir (ön kontrol bunu ayrıca söyler).
+
+#### Teslim
+
+Kurulumu müşteriye bırakmadan önce:
+
+- Adres tarayıcıda açılıyor, yönetici giriyor, CRM modülü kuruluyor ve bir süreç baştan sona çalışıyor.
+- `.env`'in kopyası (`SECRET_KEY`, `SPARTASK_INSTALLATION_KEY`, `BACKUP_ENCRYPTION_KEY`) müşterinin şifre yöneticisinde.
+- Günlük yedek görevi kurulu (`/etc/cron.d/spartask-backup`); yedeklerin sunucu dışına nereye kopyalanacağı ve geri yüklemenin ne zaman denenmesi gerektiği müşteriyle belirlendi. Aynı diskteki yedek sunucunun kaybına karşı korumaz; anahtarı yalnız o sunucuda olan yedek de açılamaz.
+- Sertifika dosyaları seçildiyse sertifikanın bitiş tarihi ve yenilenince `certs/` + `spartaskctl restart` yapılacağı biliniyor.
 
 ### Windows Server'a kurulum
 
@@ -76,7 +117,7 @@ Windows'ta SparTask bir Hyper-V sanal makinesinde (Ubuntu 24.04) çalışır; i�
 
 Sanal makinenin donanımı ilk kurulumda `-cpus 2 -memory-gb 4 -disk-gb 64` bayraklarıyla, ağı `-subnet` ile, DNS sunucuları `-dns 10.0.0.2,10.0.0.3` ile seçilir (varsayılan: bilgisayarın kendi DNS sunucuları; bilgisayar DNS'i kendisi veriyorsa `-dns` gerekir). Bu bayraklar komutun herhangi bir yerine yazılabilir, gerisi `spartaskctl install`'a gider. Komut her adımda yarım kalanı tamamlar: yeniden başlatmadan, bir hatadan ya da kesilen bağlantıdan sonra aynı komut kaldığı yerden devam eder; kurulum bitmişse yalnızca yönetim komutlarını gösterir.
 
-Gereksinimler: Windows Server 2019 ya da sonrası (Windows 10/11 Pro da olur), x86_64, işlemcide sanallaştırma açık (sanal sunucuda sağlayıcının iç içe sanallaştırmaya izin vermesi gerekir), sanal makine için 4 GB bellek ve 64 GB disk. Adresin DNS `A` kaydı bu bilgisayarın internet adresini göstermeli, 80 ve 443 internetten açık olmalıdır (bulut sağlayıcının güvenlik duvarı dahil). Bilgisayar kendi internet adresiyle sanal makineye ulaşamaz (NAT); sitenin kontrolü başka bir cihazdan yapılır.
+Gereksinimler: Windows Server 2019 ya da sonrası (Windows 10/11 Pro da olur), x86_64, işlemcide sanallaştırma açık (sanal sunucuda sağlayıcının iç içe sanallaştırmaya izin vermesi gerekir), sanal makine için 4 GB bellek ve 64 GB disk. Let's Encrypt seçildiyse adresin DNS `A` kaydı bu bilgisayarın internet adresini göstermeli, 80 ve 443 internetten açık olmalıdır (bulut sağlayıcının güvenlik duvarı dahil); şirket ağı kurulumunda şirket DNS'i adresi bu bilgisayarın ağ adresine çözer ve sertifika dosyaları bu bilgisayardaki yollarıyla verilir: `... -tls files -cert C:\certs\spartask.pem -key C:\certs\spartask.key`; komut onları sanal makineye kopyalar (kurulum bitince kopyalar silinir, kurulum `certs/`'te kendi kopyasını tutar). Bilgisayar kendi internet adresiyle sanal makineye ulaşamaz (NAT); sitenin kontrolü başka bir cihazdan yapılır.
 
 Dosyalar `C:\ProgramData\SparTask` altındadır: `spartask-deploy\` (araç), `vm\` (sanal makine ve diskleri), `ssh\` (yalnız Administrators ve SYSTEM'in okuyabildiği SSH anahtarı). Kurulum sanal makinenin içinde `/opt/spartask`'tadır ve oradaki `spartaskctl` ile işletilir:
 
@@ -125,7 +166,7 @@ SparTask imajı (`ghcr.io/spartaskai/spartask`) public'tir; giriş gerekmez. Mar
 sudo ./spartaskctl config              # .env'i bu paketin şablonuyla karşılaştır: eksikleri ekle, şifreleri üret, doldurulacakları açıkla
 sudo ./spartaskctl config -check       # aynı rapor, dosyaya dokunmadan
 sudo ./spartaskctl status              # sürüm, container'lar, migration durumu
-sudo ./spartaskctl update 1.3.0        # yedek al → imajı çek → migrate → yeniden başlat → sağlık kontrolü
+sudo ./spartaskctl update 1.3.0        # imajı indir (eski sürüm çalışırken) → yedek al → migrate → yeniden başlat → sağlık kontrolü
 sudo ./spartaskctl update 1.3.0 -marketplace-version 1.3.0
 sudo ./spartaskctl logs api            # canlı loglar (api, worker, scheduler, migrate, caddy, db ...)
 sudo ./spartaskctl restart             # .env değişikliklerini uygula
@@ -144,7 +185,7 @@ sudo BACKUP_ENCRYPTION_KEY=... ./spartaskctl restore backups/20261004T033000Z -w
   - **ZORUNLU** (boşsa sistem çalışmaz) ve **ÖNERİLEN** (boşsa ilgili özellik kapalı kalır) ayarları açıklamalarıyla listeler, geçersiz değerleri gösterir,
   - sunucuya özel öneri verir: firma listesini gösterip `SPARTASK_PLATFORM_TENANT_IDS` için doğru kimliği, DigitalOcean'da domain Cloudflare arkasındaysa `SPARTASK_EGRESS_DENY_CIDRS` değerini önerir.
   `update` ve `restart` aynı kontrolü otomatik yapar; zorunlu bir ayar eksikse hiçbir şeyi değiştirmeden durur. Rapor şifre değerlerini asla göstermez; bir değeri görmek için: `sudo grep ^SPARTASK_PLATFORM_API_TOKEN= .env`.
-- `update` başarısız olursa `.env` önceki sürüme döner; `spartaskctl restart` eski sürümü tekrar ayağa kaldırır. Başarısız bir migration dosyası kendi transaction'ında geri alınır.
+- `update` önce yeni imajları indirir; inemezse hiçbir şey değişmez ve eski sürüm çalışmayı sürdürür. Yeni sürüm açılmazsa `.env` önceki sürüme döner ve `spartaskctl restart` eski sürümü başlatır. **Otomatik veritabanı geri dönüşü yoktur:** başarısız migration dosyası kendi transaction'ında geri alınır, ama aynı güncellemede başarıyla uygulanmış migration'lar veritabanında kalır ve eski sürüm bu şemayla açılmayabilir. O durumda hata mesajındaki güncelleme öncesi yedek `spartaskctl restore` ile geri yüklenir; yedekten sonra yazılan veri kaybolacağı için bu karar bilerek verilir.
 - Yedek içeriği: `spartask.dump` (pg_dump), `storage.tar.gz`, `config.tar.gz` (.env, sertifikalar), marketplace varsa `marketplace.dump` ve `marketplace-storage.tar.gz`. Dosyalar `BACKUP_ENCRYPTION_KEY` ile şifrelenir (AES-256-GCM) ve `.enc` uzantısı alır; anahtar `config`/`update` ile üretilir. Anahtar boşsa yedek şifresiz alınır ve uyarı verilir. Şifreli yedekleri sunucu dışına da kopyalayın (barındırma firmasının yedek alanı, S3 uyumlu depolama vb.; kişisel veri içerdiği için mümkünse Türkiye'de); eski şifresiz yedekler de geri yüklenebilir.
 - Veritabanına bağlanmak: `sudo docker compose exec db sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'`, ya da kendi bilgisayarından SSH tüneliyle (aşağıda).
 
@@ -263,8 +304,10 @@ Bu depo (`spartask-deploy`) değiştiğinde `git tag v1.x.y && git push origin v
 
 | Belirti | Kontrol |
 |---|---|
-| `install`/`update` imaj çekemiyor | `docker login ghcr.io` (private imaj), sürüm etiketinin GHCR'da olduğundan emin olun |
+| `install` ön kontrolde duruyor | Her satır ne yapılacağını söyler; düzeltip aynı komutu çalıştırın (hiçbir şey değişmemiştir) |
+| `install` yarıda kaldı | Nedeni düzeltip aynı komutu çalıştırın; `install-state.json` kurulumu kaldığı yerden sürdürür |
+| `install`/`update` imaj çekemiyor | Giden HTTPS (`ghcr.io`, Docker Hub; proxy varsa Docker'ın proxy ayarı), `docker login ghcr.io` (private imaj), sürüm etiketinin GHCR'da olduğu |
 | API açılmıyor | `spartaskctl logs migrate` ve `spartaskctl logs api` — `SECRET_KEY`/`WEB_AUTH_JWT_SECRET` eksikse API başlamaz |
-| Tarayıcıda sertifika hatası | `certs/cert.pem` domain ve `*.domain`'i kapsamalı; Cloudflare kullanılıyorsa SSL modu **Full (strict)** |
+| Tarayıcıda sertifika hatası | `certs/cert.pem` tam zincir olmalı ve adresi (platform sunucusunda domain ve `*.domain`) kapsamalı; Cloudflare kullanılıyorsa SSL modu **Full (strict)** |
 | Firma adresi açılmıyor | DNS'te `*` kaydı var mı, `SPARTASK_DOMAIN` doğru mu |
 | Giden mail gitmiyor | Bazı sunucu sağlayıcıları 25, 465 ve 587 portlarını engeller; mail servisinin 2525 portunu kullanın (ör. Brevo smtp-relay.brevo.com:2525) |

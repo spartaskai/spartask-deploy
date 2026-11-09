@@ -22,7 +22,7 @@ var (
 type installOptions struct {
 	domain            string
 	version           string
-	tls               string // "files", "internal" or "acme" (Let's Encrypt, single address)
+	tls               string // tlsFiles, tlsInternal or tlsACME (Let's Encrypt, single address)
 	certFile, keyFile string
 	cloudflare        bool
 	registryUser      string
@@ -41,12 +41,12 @@ type installOptions struct {
 	admin         adminAccount
 }
 
-func runInstall(ctx context.Context, s stack, args []string) error {
+func parseInstallFlags(args []string) (installOptions, error) {
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	var o installOptions
 	fs.StringVar(&o.domain, "domain", "", "application domain, e.g. spartask.ai (tenants use *.domain)")
 	fs.StringVar(&o.version, "version", defaultVersion, "Spartask release to install, e.g. 1.0.0")
-	fs.StringVar(&o.tls, "tls", "files", `"files" (certificate files covering domain and *.domain) or "internal" (Caddy's own CA)`)
+	fs.StringVar(&o.tls, "tls", "", `"files" (certificate files; default) or "internal" (Caddy's own CA); with -activation "acme" (Let's Encrypt; default) or "files"`)
 	fs.StringVar(&o.certFile, "cert", "", "certificate file to copy to certs/cert.pem (PEM, full chain)")
 	fs.StringVar(&o.keyFile, "key", "", "private key file to copy to certs/key.pem (PEM)")
 	fs.BoolVar(&o.cloudflare, "cloudflare", false, "the domain is proxied by Cloudflare (trust Cloudflare's client IP header)")
@@ -56,17 +56,31 @@ func runInstall(ctx context.Context, s stack, args []string) error {
 	fs.StringVar(&o.marketplaceVer, "marketplace-version", "", "marketplace release (default: -version)")
 	fs.StringVar(&o.marketplaceKey, "marketplace-signing-key", "", "file with the marketplace signing key (ED25519_PRIVATE_KEY); its public key must be built into SparTask")
 	fs.StringVar(&o.marketplaceURL, "marketplace-url", "", "central marketplace for this installation, e.g. https://marketplace.spartask.ai")
+	fs.BoolVar(&o.backupCron, "backup-job", true, "offer the daily backup job (with -y: install it unless -backup-job=false)")
 	fs.BoolVar(&o.assumeYes, "y", false, "non-interactive: use flags and defaults, never prompt")
 	fs.StringVar(&o.activation, "activation", "", "activation code from the license service's on-prem page: the installation takes its address, license and first company from it")
 	fs.StringVar(&o.licenseServer, "license-server", "", "license service address shown with the activation code, e.g. https://accounts.spartask.ai")
 	fs.StringVar(&o.admin.email, "admin-email", "", "with -activation: the administrator's e-mail address (also Let's Encrypt's contact)")
 	fs.StringVar(&o.admin.name, "admin-name", "", "with -activation: the administrator's full name")
 	fs.StringVar(&o.companyID, "company-id", "", "with -activation: the company's address id (default: made from its name)")
-	if err := fs.Parse(args); err != nil {
+	err := fs.Parse(args)
+	return o, err
+}
+
+func runInstall(ctx context.Context, s stack, args []string) error {
+	return install(ctx, s, args, defaultPreflightProbes(s))
+}
+
+// install checks the server, writes .env and the install state, and completes the installation.
+// In a directory with an unfinished installation it continues that one: the same command, run
+// again after fixing a failure, takes it to the end.
+func install(ctx context.Context, s stack, args []string, probes preflightProbes) error {
+	o, err := parseInstallFlags(args)
+	if err != nil {
 		return err
 	}
 	if _, err := os.Stat(s.path(".env")); err == nil {
-		return errors.New(".env already exists: this directory is installed (use update, restart or status)")
+		return continueInstall(ctx, s, o, probes)
 	}
 	for _, required := range []string{"compose.yml", ".env.example", filepath.Join("caddy", "Caddyfile")} {
 		if _, err := os.Stat(s.path(required)); err != nil {
@@ -80,18 +94,15 @@ func runInstall(ctx context.Context, s stack, args []string) error {
 	if err := askInstallOptions(p, &o); err != nil {
 		return err
 	}
+	if err := preflight(ctx, os.Stdout, s, preflightTargets(o), probes); err != nil {
+		return err
+	}
 	env, mpEnv, err := buildEnv(s, o)
 	if err != nil {
 		return err
 	}
 	if err := registryLogin(ctx, s, p, o); err != nil {
 		return err
-	}
-	var company *companyPlan
-	if o.activation != "" {
-		if company, err = activate(ctx, s, env, &o); err != nil {
-			return err
-		}
 	}
 	if o.marketplace {
 		_, public, _ := readMarketplaceSigningKey(o.marketplaceKey)
@@ -103,6 +114,11 @@ func runInstall(ctx context.Context, s stack, args []string) error {
 	if err := installCertificates(s, o); err != nil {
 		return err
 	}
+	// The install state first: from the moment .env exists, install continues instead of refusing.
+	state := newInstallState(o)
+	if err := state.save(s); err != nil {
+		return err
+	}
 	if err := env.Save(s.path(".env")); err != nil {
 		return err
 	}
@@ -111,31 +127,90 @@ func runInstall(ctx context.Context, s stack, args []string) error {
 			return err
 		}
 	}
-	fmt.Println("\n.env written (mode 600). Pulling images and starting the stack...")
-	// From here on the installation exists; after fixing a failure, `spartaskctl restart` continues.
-	resume := func(err error, hint string) error {
-		return fmt.Errorf("%w\n%s\nThe configuration is saved; after fixing the cause run: spartaskctl restart", err, hint)
+	fmt.Println("\n.env written (mode 600).")
+	return completeInstall(ctx, s, p, env, state, o.admin.password, probes)
+}
+
+// continueInstall takes an unfinished installation to the end. A new -activation code replaces
+// one that expired before it was exchanged, and -cert/-key replace the certificate files.
+func continueInstall(ctx context.Context, s stack, o installOptions, probes preflightProbes) error {
+	state, err := readInstallState(s)
+	if errors.Is(err, os.ErrNotExist) {
+		return errors.New(".env already exists: this directory is installed (use update, restart or status)")
 	}
+	if err != nil {
+		return err
+	}
+	fmt.Println("This directory has an unfinished installation; continuing it with its saved configuration.")
+	if err := checkDocker(ctx); err != nil {
+		return err
+	}
+	env, err := loadInstalledEnv(s)
+	if err != nil {
+		return err
+	}
+	if state.Activation != nil && o.activation != "" {
+		state.Activation.Code = o.activation
+	}
+	if err := copyCertificates(s, o); err != nil {
+		return err
+	}
+	p := newPrompter(o.assumeYes)
+	if err := registryLogin(ctx, s, p, o); err != nil {
+		return err
+	}
+	return completeInstall(ctx, s, p, env, state, "", probes)
+}
+
+// completeInstall runs the steps after .env exists. Every step that changes something outside the
+// stack is recorded in the install state, so a failure is fixed and the same command run again.
+func completeInstall(ctx context.Context, s stack, p *prompter, env *envFile, state *installState, password string, probes preflightProbes) error {
+	again := func(err error, hint string) error {
+		if hint != "" {
+			err = fmt.Errorf("%w\n%s", err, hint)
+		}
+		return fmt.Errorf("%w\nThe configuration is saved. After fixing the cause run the same install command again: it continues where it stopped", err)
+	}
+	if state.Activation != nil {
+		company, err := activate(ctx, s, env, *state.Activation)
+		if err != nil {
+			return again(err, "")
+		}
+		if err := env.Save(s.path(".env")); err != nil {
+			return err
+		}
+		state.Activation, state.Company = nil, company
+		if err := state.save(s); err != nil {
+			return err
+		}
+	}
+	if err := checkServedAddress(ctx, s, env, probes.lookup, probes.now()); err != nil {
+		return again(err, "")
+	}
+	fmt.Println("Pulling images and starting the stack...")
 	if err := s.compose(ctx, "pull"); err != nil {
-		return resume(err, "Private images need a registry login: docker login ghcr.io (or install -registry-user).")
+		return again(err, "Images come from ghcr.io and Docker Hub: allow outbound HTTPS to them (behind a proxy also in Docker's proxy settings).")
 	}
 	if err := s.compose(ctx, "up", "-d", "--remove-orphans"); err != nil {
-		return resume(err, "Inspect with: docker compose logs migrate api")
+		return again(err, "Inspect with: docker compose logs migrate api")
 	}
 	if err := s.waitHealthy(ctx, "api", 3*time.Minute); err != nil {
-		return resume(err, "Inspect with: docker compose logs api")
+		return again(err, "Inspect with: docker compose logs api")
 	}
-	if company != nil {
-		if err := company.create(ctx, s); err != nil {
-			return err
+	if state.Company != nil {
+		if err := completeCompany(ctx, s, p, state, password); err != nil {
+			return again(err, "")
 		}
 	}
-	if o.backupCron {
+	if state.BackupJob {
 		if err := installBackupCron(s); err != nil {
-			return err
+			return again(err, "")
 		}
 	}
-	printInstallSummary(o, company)
+	if err := removeInstallState(s); err != nil {
+		return err
+	}
+	printInstallSummary(env, state.Company)
 	// Settings the operator still has to fill in, with their explanations.
 	cfg, err := checkInstalledConfig(s)
 	if err != nil {
@@ -144,6 +219,36 @@ func runInstall(ctx context.Context, s stack, args []string) error {
 	advise(ctx, cfg, defaultAdvisorProbes(s))
 	printReport(os.Stdout, cfg.results(), true, true)
 	return nil
+}
+
+// completeCompany installs the activated installation's license and creates its company with the
+// administrator, recording each step. A continued installation asks for the password again.
+func completeCompany(ctx context.Context, s stack, p *prompter, state *installState, password string) error {
+	c := state.Company
+	if !c.LicenseInstalled {
+		if err := c.installLicense(ctx, s); err != nil {
+			return err
+		}
+		c.LicenseInstalled = true
+		if err := state.save(s); err != nil {
+			return err
+		}
+	}
+	if c.Created {
+		return nil
+	}
+	if password == "" {
+		fmt.Printf("The administrator %s of %s is created now.\n", c.AdminEmail, c.Name)
+		var err error
+		if password, err = askAdminPassword(p); err != nil {
+			return err
+		}
+	}
+	if err := c.create(ctx, s, password); err != nil {
+		return err
+	}
+	c.Created = true
+	return state.save(s)
 }
 
 func askInstallOptions(p *prompter, o *installOptions) error {
@@ -162,10 +267,12 @@ func askInstallOptions(p *prompter, o *installOptions) error {
 	} else if err := askAddressAndTLS(p, o); err != nil {
 		return err
 	}
-	if runtime.GOOS == "linux" && os.Geteuid() == 0 {
+	if runtime.GOOS == "linux" && os.Geteuid() == 0 && o.backupCron {
 		if o.backupCron, err = p.confirm("Install a daily backup job (03:30, /etc/cron.d/spartask-backup)?", true); err != nil {
 			return err
 		}
+	} else {
+		o.backupCron = false
 	}
 	return nil
 }
@@ -180,6 +287,9 @@ func askAddressAndTLS(p *prompter, o *installOptions) error {
 	o.domain = strings.ToLower(strings.TrimSpace(o.domain))
 	if !domainPattern.MatchString(o.domain) {
 		return fmt.Errorf("invalid domain %q (no scheme, no port), e.g. spartask.ai", o.domain)
+	}
+	if o.tls == "" {
+		o.tls = tlsFiles
 	}
 	if !p.assumeYes {
 		fmt.Println("TLS: 1) certificate files for the domain and *.domain (Cloudflare Origin Certificate, company certificate)")
@@ -269,12 +379,12 @@ func buildEnv(s stack, o installOptions) (*envFile, *envFile, error) {
 	}
 	env.Set("SPARTASK_VERSION", o.version)
 	switch o.tls {
-	case "internal":
-		env.Set("SPARTASK_TLS", "internal")
-	case "acme":
+	case tlsInternal:
+		env.Set("SPARTASK_TLS", tlsInternal)
+	case tlsACME:
 		env.Set("SPARTASK_TLS", o.admin.email)
 	default:
-		env.Set("SPARTASK_TLS", "/certs/cert.pem /certs/key.pem")
+		env.Set("SPARTASK_TLS", certificateFilesValue)
 	}
 	// An activated installation learns its address from the activation (activate).
 	env.Set("SPARTASK_DOMAIN", o.domain)
@@ -338,20 +448,33 @@ func prepareDirectories(s stack, o installOptions) error {
 	return nil
 }
 
+// installCertificates puts the certificate files given with -cert and -key into certs/; a
+// certificate-files installation needs both there.
 func installCertificates(s stack, o installOptions) error {
-	if o.tls != "files" {
+	if err := copyCertificates(s, o); err != nil {
+		return err
+	}
+	if o.tls != tlsFiles {
 		return nil
 	}
-	for _, c := range []struct{ src, dst string }{{o.certFile, "cert.pem"}, {o.keyFile, "key.pem"}} {
-		dst := s.path("certs", c.dst)
-		if c.src != "" {
-			if err := copyFile(c.src, dst, 0o600); err != nil {
-				return err
-			}
+	for _, name := range []string{"cert.pem", "key.pem"} {
+		if _, err := os.Stat(s.path("certs", name)); err != nil {
+			return fmt.Errorf("certs/%s is missing: pass -cert and -key, or copy the certificate (cert.pem, full chain) and its key (key.pem) into %s",
+				name, s.path("certs"))
 		}
-		if _, err := os.Stat(dst); err != nil {
-			return fmt.Errorf("certs/%s is missing: copy the certificate (cert.pem) and key (key.pem) covering %s and *.%s into %s, or pass -cert and -key",
-				c.dst, o.domain, o.domain, s.path("certs"))
+	}
+	return nil
+}
+
+// copyCertificates copies the files given with -cert and -key into certs/ (also when an
+// unfinished installation continues with a corrected certificate).
+func copyCertificates(s stack, o installOptions) error {
+	for _, c := range []struct{ src, dst string }{{o.certFile, "cert.pem"}, {o.keyFile, "key.pem"}} {
+		if c.src == "" {
+			continue
+		}
+		if err := copyFile(c.src, s.path("certs", c.dst), 0o600); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -386,24 +509,25 @@ func installBackupCron(s stack) error {
 	return nil
 }
 
-func printInstallSummary(o installOptions, company *companyPlan) {
+func printInstallSummary(env *envFile, company *companyState) {
 	if company != nil {
-		company.printSummary(o)
+		company.printSummary(env)
 		return
 	}
-	fmt.Printf("\nSpartask %s is running: https://%s (companies: https://<company>.%s)\n", o.version, o.domain, o.domain)
-	if o.marketplace {
-		fmt.Printf("Marketplace %s: https://%s\n", o.marketplaceVer, o.marketplaceDomain)
+	domain := env.Get("SPARTASK_DOMAIN")
+	marketplace := scopeOf(env).marketplace
+	fmt.Printf("\nSpartask %s is running: https://%s (companies: https://<company>.%s)\n", env.Get("SPARTASK_VERSION"), domain, domain)
+	if marketplace {
+		fmt.Printf("Marketplace %s: https://%s\n", env.Get("MARKETPLACE_VERSION"), env.Get("MARKETPLACE_DOMAIN"))
 	}
 	fmt.Println("\nNext steps:")
-	fmt.Printf("  - DNS: A records for %s and *.%s point to this server", o.domain, o.domain)
-	if o.marketplace {
-		fmt.Printf(" (and %s)", o.marketplaceDomain)
+	fmt.Printf("  - DNS: A records for %s and *.%s point to this server", domain, domain)
+	if marketplace {
+		fmt.Printf(" (and %s)", env.Get("MARKETPLACE_DOMAIN"))
 	}
 	fmt.Println()
-	fmt.Println("  - Store a copy of .env (SECRET_KEY) in a password manager; backups cannot be decrypted without it.")
-	fmt.Println("  - Mail, Google sign-in and other settings: edit .env, then run: spartaskctl restart")
-	if o.marketplace {
+	printHandover()
+	if marketplace {
 		fmt.Println("  - CI publishing key (GitHub org secret MARKETPLACE_PUBLISH_KEY): PUBLISH_API_KEY in marketplace.env")
 	}
 }

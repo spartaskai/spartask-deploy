@@ -16,9 +16,10 @@ import (
 // An activated installation (install -activation) is a customer's own server with one company:
 // the code from the license service's on-prem page brings the installation's address (the one
 // the customer registered there), its license and the company's name. The company is served at
-// that address itself (SPARTASK_ROOT_TENANT), Caddy gets the certificate from Let's Encrypt,
-// company sign-up is closed (the administrator is created here) and the license renews itself
-// (SPARTASK_LICENSE_SERVER).
+// that address itself (SPARTASK_ROOT_TENANT), company sign-up is closed (the administrator is
+// created here) and the license renews itself (SPARTASK_LICENSE_SERVER). The certificate comes
+// from Let's Encrypt when the address is reachable from the internet, or from the company's
+// certificate files when it is reachable only in the company network or over VPN.
 
 // installationKeyVariable is the installation key the license is bound to (spartask-admin reads it).
 const installationKeyVariable = "SPARTASK_INSTALLATION_KEY"
@@ -35,14 +36,6 @@ const (
 // adminAccount is the first company's administrator.
 type adminAccount struct {
 	email, name, password string
-}
-
-// companyPlan is the first company of an activated installation, created once the stack runs.
-type companyPlan struct {
-	id, name string
-	address  string
-	license  string
-	admin    adminAccount
 }
 
 // activationAnswer is spartask-admin license activate's output (licensedoc.ActivationResponse).
@@ -84,8 +77,41 @@ func askActivation(p *prompter, o *installOptions) error {
 	if o.admin.password, err = askAdminPassword(p); err != nil {
 		return err
 	}
-	o.tls = "acme"
+	if o.tls, err = askActivationTLS(p, o.tls); err != nil {
+		return err
+	}
+	if o.tls == tlsFiles {
+		if o.certFile, err = p.ask("Certificate file of the address (PEM, full chain)", o.certFile, true); err != nil {
+			return err
+		}
+		if o.keyFile, err = p.ask("Private key file of the certificate (PEM)", o.keyFile, true); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// askActivationTLS asks where the certificate of an activated installation comes from: Let's
+// Encrypt (the default) when its address is reachable from the internet, or the company's
+// certificate files when it is reachable only in the company network or over VPN.
+func askActivationTLS(p *prompter, mode string) (string, error) {
+	if mode == "" {
+		mode = tlsACME
+	}
+	if !p.assumeYes {
+		fmt.Fprintln(p.out, "Certificate: 1) Let's Encrypt: users reach the address from the internet (ports 80 and 443 open to the internet)")
+		fmt.Fprintln(p.out, "             2) certificate files: users reach the address only in the company network or over VPN")
+		def := map[string]string{tlsACME: "1", tlsFiles: "2"}[mode]
+		choice, err := p.ask("Certificate", def, true)
+		if err != nil {
+			return "", err
+		}
+		mode = map[string]string{"1": tlsACME, "2": tlsFiles, tlsACME: tlsACME, tlsFiles: tlsFiles}[choice]
+	}
+	if mode != tlsACME && mode != tlsFiles {
+		return "", fmt.Errorf(`with -activation, -tls must be "acme" (Let's Encrypt) or "files" (-cert and -key)`)
+	}
+	return mode, nil
 }
 
 // askAdminPassword asks for the administrator's password twice, or with -y reads it from
@@ -135,10 +161,12 @@ func licenseServerURL(raw string) (string, error) {
 }
 
 // activate exchanges the activation code for the installation's license (spartask-admin in the
-// release image, with the new installation key) and points env at the registered address.
-func activate(ctx context.Context, s stack, env *envFile, o *installOptions) (*companyPlan, error) {
-	image := env.Get("SPARTASK_IMAGE") + ":" + o.version
-	fmt.Printf("Activating with %s ...\n", o.licenseServer)
+// release image, with the installation key saved in .env) and points env at the registered
+// address. The license service accepts the code again with the same key, so an interrupted
+// installation exchanges it again.
+func activate(ctx context.Context, s stack, env *envFile, a pendingActivation) (*companyState, error) {
+	image := env.Get("SPARTASK_IMAGE") + ":" + env.Get("SPARTASK_VERSION")
+	fmt.Printf("Activating with %s ...\n", a.LicenseServer)
 	pull := s.command(ctx, "pull", image)
 	pull.Stdout, pull.Stderr = os.Stdout, os.Stderr
 	if err := pull.Run(); err != nil {
@@ -146,27 +174,27 @@ func activate(ctx context.Context, s stack, env *envFile, o *installOptions) (*c
 	}
 	// The key reaches the container through the environment, never the command line.
 	run := s.command(ctx, "run", "--rm", "-e", installationKeyVariable, "--entrypoint", "/app/bin/spartask-admin", image,
-		"license", "activate", "-code", o.activation, "-server", o.licenseServer)
+		"license", "activate", "-code", a.Code, "-server", a.LicenseServer)
 	run.Env = append(os.Environ(), installationKeyVariable+"="+env.Get(installationKeyVariable))
 	var out bytes.Buffer
 	run.Stdout, run.Stderr = &out, os.Stderr
 	if err := run.Run(); err != nil {
-		return nil, licenseAdmin(fmt.Errorf("activation failed (nothing was installed; run install again with a new code if it expired): %w", err))
+		return nil, licenseAdmin(fmt.Errorf("activation failed (an expired code: get a new one on the on-prem page and pass it with -activation): %w", err))
 	}
 	var answer activationAnswer
 	if err := json.Unmarshal(out.Bytes(), &answer); err != nil {
 		return nil, fmt.Errorf("read the activation answer: %w", err)
 	}
-	return applyActivation(env, o, answer)
+	return applyActivation(env, a, answer)
 }
 
 // applyActivation sets the installation's single address, its company and closed sign-up.
-func applyActivation(env *envFile, o *installOptions, answer activationAnswer) (*companyPlan, error) {
+func applyActivation(env *envFile, a pendingActivation, answer activationAnswer) (*companyState, error) {
 	domain, err := addressDomain(answer.BaseURL)
 	if err != nil {
 		return nil, err
 	}
-	id := o.companyID
+	id := a.CompanyID
 	if id == "" {
 		id = companyIDFromName(answer.OrganizationName)
 	}
@@ -176,7 +204,6 @@ func applyActivation(env *envFile, o *installOptions, answer activationAnswer) (
 	if answer.License == "" || answer.OrganizationName == "" {
 		return nil, errors.New("the activation answer is incomplete")
 	}
-	o.domain = domain
 	env.Set("SPARTASK_DOMAIN", domain)
 	env.Set("SPARTASK_SITES", domain)
 	env.Set("SPARTASK_ROOT_TENANT", id)
@@ -184,22 +211,24 @@ func applyActivation(env *envFile, o *installOptions, answer activationAnswer) (
 	// The company runs the installation: its administrators see the license and accept a changed
 	// agreement, and the scheduler renews the license with the license service.
 	env.Set("SPARTASK_PLATFORM_TENANT_IDS", id)
-	env.Set("SPARTASK_LICENSE_SERVER", o.licenseServer)
-	if err := applyMarketplace(env, o, answer); err != nil {
+	env.Set("SPARTASK_LICENSE_SERVER", a.LicenseServer)
+	if err := applyMarketplace(env, answer); err != nil {
 		return nil, err
 	}
-	return &companyPlan{id: id, name: answer.OrganizationName, address: "https://" + domain, license: answer.License, admin: o.admin}, nil
+	return &companyState{ID: id, Name: answer.OrganizationName, Address: "https://" + domain,
+		AdminEmail: a.AdminEmail, AdminName: a.AdminName, License: answer.License}, nil
 }
 
 // applyMarketplace lets the company use the marketplace as the installation: the marketplace knows
 // it by the installation's marketplace id, and its executor licenses are the installation's. The
-// marketplace is the one the license service names unless -marketplace-url chose another.
-func applyMarketplace(env *envFile, o *installOptions, answer activationAnswer) error {
+// marketplace is the one the license service names unless -marketplace-url chose another (it is
+// in .env already).
+func applyMarketplace(env *envFile, answer activationAnswer) error {
 	if answer.MarketplaceID == "" {
 		return nil
 	}
 	env.Set("SPARTASK_MARKETPLACE_COMPANY", answer.MarketplaceID)
-	if o.marketplaceURL != "" || answer.MarketplaceURL == "" {
+	if env.Get("SPARTASK_MARKETPLACE_URL") != "" || answer.MarketplaceURL == "" {
 		return nil
 	}
 	u, err := url.Parse(answer.MarketplaceURL)
@@ -246,31 +275,41 @@ func companyIDFromName(name string) string {
 	return id
 }
 
-// create installs the license and creates the company with its administrator in the running
-// stack. The password reaches spartask-admin on standard input.
-func (c *companyPlan) create(ctx context.Context, s stack) error {
-	if err := s.composeStream(ctx, strings.NewReader(c.license), os.Stdout,
-		"exec", "-T", "api", "/app/bin/spartask-admin", "license", "install", "-f", "-"); err != nil {
-		path := s.path("license.jws")
-		if saveErr := os.WriteFile(path, []byte(c.license), 0o600); saveErr != nil {
-			return fmt.Errorf("install the license: %w (saving it to %s failed too: %v)", err, path, saveErr)
-		}
-		return fmt.Errorf("install the license: %w\nThe license is saved; after fixing the cause run: spartaskctl license install %s", err, path)
-	}
-	args := []string{"exec", "-T", "api", "/app/bin/spartask-admin", "company", "create",
-		"-id", c.id, "-name", c.name, "-admin-email", c.admin.email, "-admin-name", c.admin.name}
-	if err := s.composeStream(ctx, strings.NewReader(c.admin.password+"\n"), os.Stdout, args...); err != nil {
-		return fmt.Errorf("create the company: %w\nThe installation is running; after fixing the cause run (the password on the first line of standard input):\n  docker compose %s",
-			err, strings.Join(args, " "))
+// installLicense installs the company's license in the running stack.
+func (c *companyState) installLicense(ctx context.Context, s stack) error {
+	if err := licenseAdmin(s.composeStream(ctx, strings.NewReader(c.License), os.Stdout,
+		"exec", "-T", "api", "/app/bin/spartask-admin", "license", "install", "-f", "-")); err != nil {
+		return fmt.Errorf("install the license: %w", err)
 	}
 	return nil
 }
 
-func (c *companyPlan) printSummary(o installOptions) {
-	fmt.Printf("\nSpartask %s is running: %s\n", o.version, c.address)
-	fmt.Printf("Company: %s\nAdministrator: %s (sign in with the password you chose)\n", c.name, c.admin.email)
+// create creates the company with its administrator in the running stack. The password reaches
+// spartask-admin on standard input.
+func (c *companyState) create(ctx context.Context, s stack, password string) error {
+	if err := s.composeStream(ctx, strings.NewReader(password+"\n"), os.Stdout, "exec", "-T", "api", "/app/bin/spartask-admin", "company", "create",
+		"-id", c.ID, "-name", c.Name, "-admin-email", c.AdminEmail, "-admin-name", c.AdminName); err != nil {
+		return fmt.Errorf("create the company: %w", err)
+	}
+	return nil
+}
+
+func (c *companyState) printSummary(env *envFile) {
+	fmt.Printf("\nSpartask %s is running: %s\n", env.Get("SPARTASK_VERSION"), c.Address)
+	fmt.Printf("Company: %s\nAdministrator: %s (sign in with the password you chose)\n", c.Name, c.AdminEmail)
 	fmt.Println("\nNext steps:")
-	fmt.Printf("  - DNS: an A record for %s points to this server; ports 80 and 443 are open (the certificate comes from Let's Encrypt)\n", o.domain)
-	fmt.Println("  - Store a copy of .env (SECRET_KEY, SPARTASK_INSTALLATION_KEY) in a password manager; backups cannot be decrypted without it.")
+	domain := env.Get("SPARTASK_DOMAIN")
+	if tlsMode(env) == tlsACME {
+		fmt.Printf("  - DNS: the A record of %s points to this server; ports 80 and 443 stay open (Let's Encrypt renews the certificate)\n", domain)
+	} else {
+		fmt.Printf("  - DNS: %s points to this server in your network; replace certs/cert.pem and certs/key.pem before the certificate expires, then run: spartaskctl restart\n", domain)
+	}
+	printHandover()
+}
+
+// printHandover lists what the server's owner keeps safe after the installation.
+func printHandover() {
+	fmt.Println("  - Store a copy of .env (SECRET_KEY, SPARTASK_INSTALLATION_KEY, BACKUP_ENCRYPTION_KEY) in a password manager; backups cannot be decrypted without it.")
+	fmt.Println("  - Backups are written to backups/ on this server: copy them to another place regularly, a lost server takes its backups with it.")
 	fmt.Println("  - Mail and other settings: edit .env, then run: spartaskctl restart")
 }

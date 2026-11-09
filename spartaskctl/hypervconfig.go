@@ -365,17 +365,39 @@ type hypervOptions struct {
 	subnet    string
 	subnetSet bool
 	dns       string
+	certFile  string // certificate files on this computer, copied into the VM for -tls files
+	keyFile   string
 	install   []string
+}
+
+// Where the certificate files given to hyperv install are copied in the VM.
+const (
+	hypervCertPath = "/home/" + hypervUser + "/spartask-cert.pem"
+	hypervKeyPath  = "/home/" + hypervUser + "/spartask-key.pem"
+)
+
+// vmInstallArgs are the installer's arguments in the VM: the certificate files point to their
+// copies there.
+func (o hypervOptions) vmInstallArgs() []string {
+	args := append([]string{}, o.install...)
+	if o.certFile != "" {
+		args = append(args, "-cert", hypervCertPath)
+	}
+	if o.keyFile != "" {
+		args = append(args, "-key", hypervKeyPath)
+	}
+	return args
 }
 
 const defaultHypervSubnet = "172.30.230.0/24"
 
 // parseHypervArgs takes the hyperv options out of args (-name value or -name=value, also with
-// "--") and keeps everything else, in order, for the installer.
+// "--") and keeps everything else, in order, for the installer. -cert and -key name files on this
+// computer; they are copied into the VM.
 func parseHypervArgs(args []string) (hypervOptions, error) {
 	o := hypervOptions{vm: hypervVM{cpus: 2, memoryGB: 4, diskGB: 64}, subnet: defaultHypervSubnet}
 	ints := map[string]*int{"cpus": &o.vm.cpus, "memory-gb": &o.vm.memoryGB, "disk-gb": &o.vm.diskGB}
-	strs := map[string]*string{"subnet": &o.subnet, "dns": &o.dns}
+	strs := map[string]*string{"subnet": &o.subnet, "dns": &o.dns, "cert": &o.certFile, "key": &o.keyFile}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		name, value, hasValue := strings.Cut(strings.TrimLeft(arg, "-"), "=")

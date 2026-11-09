@@ -37,6 +37,21 @@ func (s stack) compose(ctx context.Context, args ...string) error {
 	return nil
 }
 
+// composeWith runs `docker compose <args>` with variables that override .env for this command
+// (compose takes the environment before .env), e.g. the release an update downloads.
+func (s stack) composeWith(ctx context.Context, vars map[string]string, args ...string) error {
+	cmd := s.command(ctx, append([]string{"compose"}, args...)...)
+	cmd.Env = os.Environ()
+	for key, value := range vars {
+		cmd.Env = append(cmd.Env, key+"="+value)
+	}
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("docker compose %s: %w", strings.Join(args, " "), err)
+	}
+	return nil
+}
+
 // composeOutput runs `docker compose <args>` and returns its trimmed stdout.
 func (s stack) composeOutput(ctx context.Context, args ...string) (string, error) {
 	return s.output(ctx, append([]string{"compose"}, args...)...)

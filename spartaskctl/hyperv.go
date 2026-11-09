@@ -149,11 +149,17 @@ func hypervInstall(ctx context.Context, paths hypervPaths, args []string) error 
 	}
 	if installed {
 		fmt.Printf("\nSparTask is already installed in the VM. Manage it with:\n  %s status\n", manage)
-		fmt.Printf("If its first start was interrupted, continue with:\n  %s restart\n", manage)
 		return nil
 	}
-	if err := vm.run(ctx, remoteInstallCommand(toolVersion, o.install)); err != nil {
+	if err := vm.uploadCertificates(ctx, o); err != nil {
+		return err
+	}
+	if err := vm.run(ctx, remoteInstallCommand(toolVersion, o.vmInstallArgs())); err != nil {
 		return fmt.Errorf("the installation in the VM stopped: %w\nAfter fixing the cause run the same command again", err)
+	}
+	// The installation keeps its own copy of the certificate files (certs/).
+	if code, err := vm.batch(ctx, "rm -f "+shQuote(hypervCertPath)+" "+shQuote(hypervKeyPath)); err != nil || code != 0 {
+		return errors.Join(fmt.Errorf("remove the copied certificate files from the VM's home directory (exit %d)", code), err)
 	}
 	fmt.Printf("\nSparTask runs in the Hyper-V VM %s (%s). Ports %s of this computer are forwarded to it:\n", hypervName, net.vm, joinInts(hypervPorts))
 	fmt.Println("the DNS record of its address points to this computer's public IP address. The VM starts and stops with Windows.")
@@ -373,13 +379,38 @@ func (s vmSSH) waitCloudInit(ctx context.Context) error {
 	return fmt.Errorf("cloud-init failed in the VM (exit %d); see: spartaskctl hyperv ssh -- sudo cloud-init status --long", code)
 }
 
-// installed reports whether SparTask's configuration exists in the VM.
+// installed reports whether SparTask's installation in the VM is complete: an unfinished one
+// (its install state remains) is continued by running the installer again.
 func (s vmSSH) installed(ctx context.Context) (bool, error) {
-	code, err := s.batch(ctx, "sudo test -e "+shQuote(hypervInstallDir+"/.env"))
+	code, err := s.batch(ctx, "sudo test -e "+shQuote(hypervInstallDir+"/.env")+" -a ! -e "+shQuote(hypervInstallDir+"/"+installStateFile))
 	if err != nil {
 		return false, err
 	}
 	return code == 0, nil
+}
+
+// uploadCertificates copies the certificate files given to hyperv install into the VM (mode 600),
+// where the installer copies them into the installation.
+func (s vmSSH) uploadCertificates(ctx context.Context, o hypervOptions) error {
+	for _, f := range []struct{ local, remote string }{{o.certFile, hypervCertPath}, {o.keyFile, hypervKeyPath}} {
+		if f.local == "" {
+			continue
+		}
+		file, err := os.Open(f.local)
+		if err != nil {
+			return fmt.Errorf("open %s: %w", f.local, err)
+		}
+		cmd := s.command(ctx, []string{"-o", "BatchMode=yes"}, "umask 077 && cat > "+shQuote(f.remote))
+		cmd.Stdin = file
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		err = cmd.Run()
+		file.Close()
+		if err != nil {
+			return fmt.Errorf("copy %s into the VM: %w: %s", f.local, err, strings.TrimSpace(stderr.String()))
+		}
+	}
+	return nil
 }
 
 // run runs a command on a terminal connected to this console (the installer asks questions).

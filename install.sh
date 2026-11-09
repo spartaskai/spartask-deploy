@@ -7,6 +7,9 @@
 # release (SPARTASK_DEPLOY_VERSION=v1.2.0 pins one), verifies it against the release's
 # SHA256SUMS, unpacks it into SPARTASK_DIR (/opt/spartask) and runs `spartaskctl install` there
 # with the given arguments. Everything after `--` goes to spartaskctl install unchanged.
+#
+# Run the same command again after a failure: an unfinished installation in SPARTASK_DIR is
+# continued with the bundle it started with.
 set -eu
 
 repo="https://github.com/spartaskai/spartask-deploy/releases"
@@ -25,7 +28,21 @@ x86_64 | amd64) arch=amd64 ;;
 esac
 command -v curl >/dev/null 2>&1 || fail "curl is required"
 command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required"
-[ ! -e "$dir/.env" ] || fail "$dir is already installed; manage it there with ./spartaskctl (update, status, ...)"
+
+# The questions are read from the terminal; the script itself arrives on standard input.
+run_install() {
+	cd "$dir"
+	if [ ! -t 0 ] && (exec </dev/tty) 2>/dev/null; then
+		exec ./spartaskctl install "$@" </dev/tty
+	fi
+	exec ./spartaskctl install "$@"
+}
+
+if [ -e "$dir/.env" ]; then
+	[ -e "$dir/install-state.json" ] || fail "$dir is already installed; manage it there with ./spartaskctl (update, status, ...)"
+	echo "spartask: continuing the unfinished installation in $dir"
+	run_install "$@"
+fi
 
 if ! command -v docker >/dev/null 2>&1; then
 	echo "spartask: installing Docker (https://get.docker.com)"
@@ -48,10 +65,6 @@ curl -fsSL -o "$tmp/SHA256SUMS" "$base/SHA256SUMS"
 
 mkdir -p "$dir"
 tar -xzf "$tmp/$bundle" -C "$dir" --strip-components=1
-cd "$dir"
+rm -rf "$tmp"
 echo "spartask: installing in $dir"
-# The script itself arrives on standard input; spartaskctl reads the answers from the terminal.
-if [ ! -t 0 ] && (exec </dev/tty) 2>/dev/null; then
-	exec ./spartaskctl install "$@" </dev/tty
-fi
-exec ./spartaskctl install "$@"
+run_install "$@"

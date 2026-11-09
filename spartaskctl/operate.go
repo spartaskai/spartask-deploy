@@ -21,8 +21,10 @@ func loadInstalledEnv(s stack) (*envFile, error) {
 	return env, nil
 }
 
-// runUpdate switches the stack to another release: backup, pull, migrate, restart, health check.
-// When the new release does not come up, .env is switched back so the next `up` keeps the old one.
+// runUpdate switches the stack to another release: the new images are downloaded first (the
+// running release keeps serving), then a backup, migrations, restart and health check. When the
+// new release does not come up, .env is switched back; a database the new release's migrations
+// already changed is brought back with the pre-update backup.
 func runUpdate(ctx context.Context, s stack, args []string) error {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	noBackup := fs.Bool("no-backup", false, "skip the pre-update backup")
@@ -42,21 +44,32 @@ func runUpdate(ctx context.Context, s stack, args []string) error {
 		return fmt.Errorf("invalid marketplace version %q", mpVersion)
 	}
 	// New settings of this package are added and safe secrets generated; missing required
-	// settings stop the update before the backup.
+	// settings stop the update before anything else.
 	env, err := prepareConfig(s)
 	if err != nil {
 		return err
 	}
 	previous, previousMP := env.Get("SPARTASK_VERSION"), env.Get("MARKETPLACE_VERSION")
+	target := map[string]string{"SPARTASK_VERSION": version}
+	if mpVersion != "" {
+		target["MARKETPLACE_VERSION"] = mpVersion
+	}
+	fmt.Printf("Downloading %s (the running release keeps serving)...\n", version)
+	if err := s.composeWith(ctx, target, "pull"); err != nil {
+		return fmt.Errorf("%w\nNothing was changed; %s keeps running", err, previous)
+	}
+	restore := "There is no pre-update backup (-no-backup)."
 	if !*noBackup {
 		fmt.Println("Backup before the update...")
-		if _, err := backup(ctx, s, env); err != nil {
+		dir, err := backup(ctx, s, env)
+		if err != nil {
 			return fmt.Errorf("pre-update backup failed (use -no-backup to skip): %w", err)
 		}
+		restore = "If the previous release does not start because the new release's migrations changed the database, bring back the pre-update backup\n" +
+			"(data written since then is lost; decide before restoring) and start again:\n  spartaskctl restore " + dir + "\n  spartaskctl restart"
 	}
-	env.Set("SPARTASK_VERSION", version)
-	if mpVersion != "" {
-		env.Set("MARKETPLACE_VERSION", mpVersion)
+	for key, value := range target {
+		env.Set(key, value)
 	}
 	if err := env.Save(s.path(".env")); err != nil {
 		return err
@@ -68,10 +81,7 @@ func runUpdate(ctx context.Context, s stack, args []string) error {
 			return errors.Join(cause, saveErr)
 		}
 		return fmt.Errorf("%w\n.env is back on %s. Logs: docker compose logs --tail 200 migrate api\n"+
-			"Return to the previous release: spartaskctl restart  (database changes of a failed migration are rolled back per file)", cause, previous)
-	}
-	if err := s.compose(ctx, "pull"); err != nil {
-		return revert(err)
+			"Start the previous release: spartaskctl restart\n%s", cause, previous, restore)
 	}
 	if err := s.compose(ctx, "up", "-d", "--remove-orphans"); err != nil {
 		return revert(err)
