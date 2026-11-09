@@ -50,7 +50,7 @@ func readLicenseFile(path string) ([]byte, error) {
 // licenseAdmin explains the error of a release whose spartask-admin has no license command.
 func licenseAdmin(err error) error {
 	if err != nil && strings.Contains(strings.ToLower(err.Error()), "exit status 2") {
-		return fmt.Errorf("this Spartask release has no installation license; update to a release that includes it (%w)", err)
+		return fmt.Errorf("this SparTask release has no installation license; update to a release that includes it (%w)", err)
 	}
 	return err
 }

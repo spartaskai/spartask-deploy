@@ -31,7 +31,7 @@ func installedStack(t *testing.T, env string) stack {
 }
 
 // An installation from an older package: no NATS token, no platform API settings.
-const olderEnv = `# Spartask
+const olderEnv = `# SparTask
 COMPOSE_FILE=compose.yml
 COMPOSE_PROJECT_NAME=spartask
 SPARTASK_IMAGE=ghcr.io/spartaskai/spartask
@@ -268,8 +268,8 @@ func TestReportNeverPrintsSecrets(t *testing.T) {
 }
 
 func TestSummaryKeepsAbbreviations(t *testing.T) {
-	rule := envRule{Description: []string{"Gönderen adresi, ör. \"Spartask <no-reply@spartask.ai>\". İkinci cümle."}}
-	if got := rule.summary(); got != "Gönderen adresi, ör. \"Spartask <no-reply@spartask.ai>\"." {
+	rule := envRule{Description: []string{"Gönderen adresi, ör. \"SparTask <no-reply@spartask.ai>\". İkinci cümle."}}
+	if got := rule.summary(); got != "Gönderen adresi, ör. \"SparTask <no-reply@spartask.ai>\"." {
 		t.Fatalf("summary = %q", got)
 	}
 }

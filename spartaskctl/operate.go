@@ -89,7 +89,7 @@ func runUpdate(ctx context.Context, s stack, args []string) error {
 	if err := s.waitHealthy(ctx, "api", 3*time.Minute); err != nil {
 		return revert(err)
 	}
-	fmt.Printf("Spartask %s -> %s is running.\n", previous, version)
+	fmt.Printf("SparTask %s -> %s is running.\n", previous, version)
 	return nil
 }
 
@@ -108,7 +108,7 @@ func runStatus(ctx context.Context, s stack) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Spartask %s on %s", env.Get("SPARTASK_VERSION"), env.Get("SPARTASK_DOMAIN"))
+	fmt.Printf("SparTask %s on %s", env.Get("SPARTASK_VERSION"), env.Get("SPARTASK_DOMAIN"))
 	if v := env.Get("MARKETPLACE_VERSION"); v != "" && strings.Contains(env.Get("COMPOSE_FILE"), "marketplace") {
 		fmt.Printf(", marketplace %s on %s", v, env.Get("MARKETPLACE_DOMAIN"))
 	}

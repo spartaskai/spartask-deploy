@@ -1,4 +1,4 @@
-# Spartask reverse proxy. Values come from .env through compose.yml:
+# SparTask reverse proxy. Values come from .env through compose.yml:
 #   SPARTASK_SITES         the addresses served: the domain and every company subdomain
 #                          ("spartask.ai, *.spartask.ai", compose's default) or a single address
 #                          ("spartask.firma.com.tr")

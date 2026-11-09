@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs Spartask on a Linux server with one command:
+# Installs SparTask on a Linux server with one command:
 #
 #   curl -fsSL https://get.spartask.ai | sudo sh -s -- -activation <code> -license-server <url>
 #
@@ -21,10 +21,10 @@ fail() {
 }
 
 [ "$(id -u)" -eq 0 ] || fail "run as root: curl -fsSL https://get.spartask.ai | sudo sh -s -- <install options>"
-[ "$(uname -s)" = Linux ] || fail "Spartask installs on Linux servers (Windows Server: see the README)"
+[ "$(uname -s)" = Linux ] || fail "SparTask installs on Linux servers (Windows Server: see the README)"
 case "$(uname -m)" in
 x86_64 | amd64) arch=amd64 ;;
-*) fail "Spartask images are built for x86_64 (amd64) servers; this server is $(uname -m)" ;;
+*) fail "SparTask images are built for x86_64 (amd64) servers; this server is $(uname -m)" ;;
 esac
 command -v curl >/dev/null 2>&1 || fail "curl is required"
 command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required"

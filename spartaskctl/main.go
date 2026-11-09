@@ -1,4 +1,4 @@
-// Command spartaskctl installs and operates a Spartask server (Docker Compose stack).
+// Command spartaskctl installs and operates a SparTask server (Docker Compose stack).
 //
 //	spartaskctl install [flags]            first installation (asks for domain, version, TLS ...)
 //	spartaskctl install -activation CODE   a customer's installation activated on the on-prem page
@@ -30,7 +30,7 @@ var (
 	defaultVersion = ""
 )
 
-const usage = `spartaskctl %s — Spartask server management
+const usage = `spartaskctl %s — SparTask server management
 
 Usage: spartaskctl [-dir DIR] <command> [arguments]
 

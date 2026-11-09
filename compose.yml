@@ -1,4 +1,4 @@
-# Spartask production stack. Managed with spartaskctl (install / update / backup / restore / status);
+# SparTask production stack. Managed with spartaskctl (install / update / backup / restore / status);
 # plain `docker compose ...` works too, since .env sets COMPOSE_FILE and every variable.
 #
 # Only Caddy publishes ports (80/443). PostgreSQL, NATS and the app containers are reachable only on

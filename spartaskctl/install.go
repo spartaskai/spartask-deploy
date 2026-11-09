@@ -45,7 +45,7 @@ func parseInstallFlags(args []string) (installOptions, error) {
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	var o installOptions
 	fs.StringVar(&o.domain, "domain", "", "application domain, e.g. spartask.ai (tenants use *.domain)")
-	fs.StringVar(&o.version, "version", defaultVersion, "Spartask release to install, e.g. 1.0.0")
+	fs.StringVar(&o.version, "version", defaultVersion, "SparTask release to install, e.g. 1.0.0")
 	fs.StringVar(&o.tls, "tls", "", `"files" (certificate files; default) or "internal" (Caddy's own CA); with -activation "acme" (Let's Encrypt; default) or "files"`)
 	fs.StringVar(&o.certFile, "cert", "", "certificate file to copy to certs/cert.pem (PEM, full chain)")
 	fs.StringVar(&o.keyFile, "key", "", "private key file to copy to certs/key.pem (PEM)")
@@ -253,7 +253,7 @@ func completeCompany(ctx context.Context, s stack, p *prompter, state *installSt
 
 func askInstallOptions(p *prompter, o *installOptions) error {
 	var err error
-	if o.version, err = p.ask("Spartask version", o.version, true); err != nil {
+	if o.version, err = p.ask("SparTask version", o.version, true); err != nil {
 		return err
 	}
 	o.version = strings.TrimPrefix(o.version, "v")
@@ -502,7 +502,7 @@ func installBackupCron(s stack) error {
 		return fmt.Errorf("locate spartaskctl: %w", err)
 	}
 	line := fmt.Sprintf("30 3 * * * root %s -dir %s backup >> %s 2>&1\n", exe, s.dir, s.path("backups", "backup.log"))
-	content := "# Spartask daily backup (spartaskctl install)\nSHELL=/bin/sh\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n" + line
+	content := "# SparTask daily backup (spartaskctl install)\nSHELL=/bin/sh\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n" + line
 	if err := os.WriteFile("/etc/cron.d/spartask-backup", []byte(content), 0o644); err != nil {
 		return fmt.Errorf("install backup job: %w", err)
 	}
@@ -516,7 +516,7 @@ func printInstallSummary(env *envFile, company *companyState) {
 	}
 	domain := env.Get("SPARTASK_DOMAIN")
 	marketplace := scopeOf(env).marketplace
-	fmt.Printf("\nSpartask %s is running: https://%s (companies: https://<company>.%s)\n", env.Get("SPARTASK_VERSION"), domain, domain)
+	fmt.Printf("\nSparTask %s is running: https://%s (companies: https://<company>.%s)\n", env.Get("SPARTASK_VERSION"), domain, domain)
 	if marketplace {
 		fmt.Printf("Marketplace %s: https://%s\n", env.Get("MARKETPLACE_VERSION"), env.Get("MARKETPLACE_DOMAIN"))
 	}

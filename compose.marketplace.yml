@@ -1,4 +1,4 @@
-# Spartask Marketplace — only on the platform server (marketplace.<domain>); on-premise
+# SparTask Marketplace — only on the platform server (marketplace.<domain>); on-premise
 # installations use the central marketplace and do not need this file.
 # Enabled by `spartaskctl install --with-marketplace`, which adds it to COMPOSE_FILE in .env.
 # Secrets live in marketplace.env so the engine containers never see them.

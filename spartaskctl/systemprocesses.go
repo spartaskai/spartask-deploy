@@ -20,7 +20,7 @@ func runSystemProcesses(ctx context.Context, s stack, args []string) error {
 	}
 	err := s.compose(ctx, "exec", "-T", "api", "/app/bin/spartask-admin", "system-processes", "sync")
 	if err != nil && strings.Contains(strings.ToLower(err.Error()), "exit status 2") {
-		return fmt.Errorf("this Spartask release cannot sync system processes; update to a release that includes it (%w)", err)
+		return fmt.Errorf("this SparTask release cannot sync system processes; update to a release that includes it (%w)", err)
 	}
 	return err
 }

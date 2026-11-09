@@ -151,7 +151,7 @@ func adviseEgressDeny(ctx context.Context, env *envFile, result *syncResult, pro
 	case direct && denied:
 		result.Notes = append(result.Notes, fmt.Sprintf(
 			"SPARTASK_EGRESS_DENY_CIDRS: %s doğrudan bu sunucuya (%s) çözülüyor ama bu IP engelli listesinde.\n"+
-				"Firma süreçlerinin kendi Spartask adresinize çağrıları (ör. platform API'si) engellenir; IP'yi listeden çıkarın.", domain, serverIP))
+				"Firma süreçlerinin kendi SparTask adresinize çağrıları (ör. platform API'si) engellenir; IP'yi listeden çıkarın.", domain, serverIP))
 	}
 }
 

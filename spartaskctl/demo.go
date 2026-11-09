@@ -59,7 +59,7 @@ func runDemo(ctx context.Context, s stack, args []string) error {
 	err = s.composeStream(ctx, bytes.NewReader(resolved), os.Stdout,
 		"exec", "-T", "api", "/app/bin/spartask-admin", "demo", action, "-f", "-")
 	if err != nil && strings.Contains(err.Error(), "spartask-admin") && strings.Contains(strings.ToLower(err.Error()), "no such file") {
-		return fmt.Errorf("this Spartask release has no spartask-admin; update to a release that includes it (%w)", err)
+		return fmt.Errorf("this SparTask release has no spartask-admin; update to a release that includes it (%w)", err)
 	}
 	return err
 }

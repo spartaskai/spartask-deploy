@@ -295,7 +295,7 @@ func (c *companyState) create(ctx context.Context, s stack, password string) err
 }
 
 func (c *companyState) printSummary(env *envFile) {
-	fmt.Printf("\nSpartask %s is running: %s\n", env.Get("SPARTASK_VERSION"), c.Address)
+	fmt.Printf("\nSparTask %s is running: %s\n", env.Get("SPARTASK_VERSION"), c.Address)
 	fmt.Printf("Company: %s\nAdministrator: %s (sign in with the password you chose)\n", c.Name, c.AdminEmail)
 	fmt.Println("\nNext steps:")
 	domain := env.Get("SPARTASK_DOMAIN")
