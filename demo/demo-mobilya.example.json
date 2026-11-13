@@ -61,5 +61,14 @@
       "ssl_mode": "require",
       "default": true
     }
+  ],
+  "ai_agents": [
+    {
+      "first_name": "Ada",
+      "last_name": "Yazılımcı",
+      "title": "Backend geliştirici",
+      "manager": "demo+can@spartask.ai",
+      "role_description": "Demo Mobilya'nın sipariş servisini geliştirir; günlük toplantıya hazırlık raporu yazar ve toplantıda kısa, net cevap verir."
+    }
   ]
 }
