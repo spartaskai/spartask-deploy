@@ -204,6 +204,9 @@ Komutlar sunucuda `/opt/spartask` klasöründe çalıştırılır (`cd /opt/spar
 
 Bu servisler varsayılan kapalıdır. `spartaskctl config` açıklamalı meeting/STT/TTS ayarlarını `.env`'ye ekler;
 container başlatmaz, imaj veya model indirmez. Ayarları doldurup `spartaskctl restart` çalıştırın.
+Kısa LiveKit kurulumu için `spartaskctl config -meeting` kullanın: bu sunucu / harici / kapalı
+seçimini sorar. Aynı sunucuda yalnız meeting adresi, erişilebilir IPv4 ve sabit LiveKit imajı
+girilir; boş key/secret üretilir. `config -meeting -check` soru sormadan ve yazmadan rehberi gösterir.
 Yalnız açık **ve eksiksiz** özelliklerin servisleri başlar. Kapatılan veya gerekli ayarı eksilen
 özelliklerin eski container'ları sonraki `restart` sırasında durdurulur ve kaldırılır; model önbelleği korunur.
 

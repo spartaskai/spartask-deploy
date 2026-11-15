@@ -22,6 +22,7 @@ func meetingFixture(t *testing.T) (stack, *envFile) {
 
 func setMeetingMedia(env *envFile) {
 	env.Set("MEETING_MEDIA_ENABLED", "true")
+	env.Set("LIVEKIT_MANAGED", "false") // This helper explicitly configures an external SFU.
 	env.Set("LIVEKIT_URL", "wss://meeting.example.com")
 	env.Set("LIVEKIT_INTERNAL_URL", "https://meeting.example.com")
 	env.Set("LIVEKIT_API_KEY", "test-media-key")

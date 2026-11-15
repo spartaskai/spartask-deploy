@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -103,13 +104,28 @@ func checkInstalledConfig(s stack) (*installedConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+	return checkConfigEnv(s, env)
+}
+
+// checkConfigEnv also accepts an in-memory setup draft. The wizard never writes partial input.
+func checkConfigEnv(s stack, env *envFile) (*installedConfig, error) {
 	rules, err := readRules(s.path(".env.example"))
 	if err != nil {
 		return nil, err
 	}
+	// An endpoint configured before managed deployment existed must remain external unless
+	// its owner explicitly opts into local management. Never generate remote credentials.
+	legacyExternal := !env.has("LIVEKIT_MANAGED") && env.Get("LIVEKIT_URL") != ""
+	if legacyExternal {
+		env.Set("LIVEKIT_MANAGED", "false")
+	}
 	cfg := &installedConfig{env: env}
 	if cfg.envResult, err = syncEnv(".env", env, rules, nil, false); err != nil {
 		return nil, err
+	}
+	if legacyExternal {
+		cfg.envResult.Derived = true
+		cfg.envResult.Notes = append(cfg.envResult.Notes, "Mevcut LIVEKIT_URL korundu: sahiplik ayarı olmayan eski bağlantı harici kabul edildi; yerel yönetime geçiş için config -meeting kullanın.")
 	}
 	validateFormats(env, cfg.envResult)
 	cfg.planMeeting(s)
@@ -190,24 +206,56 @@ func (c *installedConfig) blocking() bool {
 	return false
 }
 
-// runConfig is `spartaskctl config [-check]`.
+// runConfig is `spartaskctl config [-check] [-meeting]`.
 func runConfig(ctx context.Context, s stack, args []string) error {
+	return configWith(ctx, s, args, newPrompter(false), defaultAdvisorProbes(s))
+}
+
+func configWith(ctx context.Context, s stack, args []string, p *prompter, probes advisorProbes) error {
 	fs := flag.NewFlagSet("config", flag.ContinueOnError)
 	checkOnly := fs.Bool("check", false, "only report; do not add or generate anything")
+	meetingSetup := fs.Bool("meeting", false, "guide LiveKit setup (with -check: show only the meeting guide, without prompting or writing)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	cfg, err := checkInstalledConfig(s)
+	if fs.NArg() != 0 {
+		return errors.New("usage: spartaskctl config [-check] [-meeting]")
+	}
+	env, err := loadInstalledEnv(s)
 	if err != nil {
 		return err
 	}
-	advise(ctx, cfg, defaultAdvisorProbes(s))
+	before := env.Bytes()
+	if *meetingSetup && !*checkOnly {
+		if err := configureMeeting(p, env); err != nil {
+			return err
+		}
+	}
+	cfg, err := checkConfigEnv(s, env)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(before, cfg.env.Bytes()) {
+		cfg.envResult.Derived = true
+	}
+	advise(ctx, cfg, probes)
 	if !*checkOnly {
 		if err := cfg.save(s); err != nil {
 			return err
 		}
 	}
-	printReport(os.Stdout, cfg.results(), true, *checkOnly)
+	if *meetingSetup {
+		// The guided view reports blockers and effective state, without dumping every newly
+		// added advanced setting. The full report remains available through plain config.
+		for _, result := range cfg.results() {
+			compact := *result
+			compact.Added = nil
+			printReport(os.Stdout, []*syncResult{&compact}, false, *checkOnly)
+		}
+	} else {
+		printReport(os.Stdout, cfg.results(), true, *checkOnly)
+	}
+	printMeetingGuide(os.Stdout, cfg, *checkOnly)
 	if cfg.blocking() {
 		return errors.New("zorunlu ayarlar eksik veya geçersiz; .env dosyasını düzenleyip `spartaskctl config` ile tekrar kontrol edin")
 	}

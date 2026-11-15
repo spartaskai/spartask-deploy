@@ -5,6 +5,63 @@ akışını kullanır. Eşleşen backend/web sürümü, meeting migration'ları 
 ayrıca gereklidir. Kurulu eski Daily paketini veya yayımlanmış imajları bu değişiklik kendisi güncellemez.
 Bu belge, feature branch'inde henüz yayımlanmamış dağıtım desteğini açıklar.
 
+## Hangi alanları dolduracağım?
+
+Aynı sunucuda LiveKit bağlantısını kısa adımlarla kurmak için:
+
+```sh
+sudo ./spartaskctl config -meeting
+# Konum: local
+# Toplantı adresi: meetings.sizin-domaininiz.com (veya wss://…)
+# IP: istemcilerin medyayı gönderdiği gerçek sunucu IPv4 adresi
+# İmaj: sürüm profilindeki repository@sha256:<digest> (bilmiyorsanız boş; servis kapalı kalır)
+sudo ./spartaskctl config -meeting -check
+sudo ./spartaskctl restart
+```
+
+Bu sihirbaz LiveKit bağlantısını hazırlar; **STT/TTS ve ajan sesi ayarlarını değiştirmez**.
+`local` ve `external` seçimleri medyayı açık ister; `config` container çalıştırmaz, yalnız `restart`
+uygular. Eksik alan varsa feature etkili olarak kapalı kalır. `off`, medya ve ajan sesini kapatır;
+başka süreçlerin kullandığı ortak `SPEECH_ENABLED` ayarı korunur. EOF/iptalde dosyalara yazılmaz.
+
+| Ayar grubu | Yapacağınız işlem |
+|---|---|
+| `LIVEKIT_URL` | Kullanacağınız meeting domainini girin; DNS kaydı ve güvenilir TLS ayrıca hazırlanır. |
+| `LIVEKIT_PUBLIC_IP` | Medyanın ulaşacağı sunucu IPv4 adresini girin. Cloudflare proxy IP'si kullanılmaz. |
+| `LIVEKIT_IMAGE` | Seçilen/sınanmış LiveKit sürümünün digest'ini dağıtım profilinden alın. Rastgele hash veya `latest` yazmayın. |
+| `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | Yerel kurulumda boş bırakın: `config` üretir ve mevcut dolu değerleri değiştirmez. Haricide gerçek servis anahtarlarını girin. |
+| `LIVEKIT_INTERNAL_URL` | Yerelde boş bırakılabilir; çalışma tanımında WSS adresinin HTTPS karşılığı türetilir. |
+| `LIVEKIT_TLS` | Mevcut TLS ayarı meeting domainini kapsıyor ve güvenilir ise boş kalabilir. Aksi halde ör. ACME e-postası veya uygun sertifika ayarı gerekir. |
+| TCP/UDP port, CPU/RAM, concurrency ve oda limitleri | Gelişmiş ayarlar: ilk pilotta mevcut varsayılanlarla başlayın; kapasiteyi ölçmeden büyütmeyin. |
+| `SPARTASK_VOICE_IMAGE` | Backend yayınının Actions özetindeki digest değerini alın; LiveKit imajı değildir. |
+| STT/TTS `MODEL`, `IMAGE`, `ENV_FILE`, `PROVIDER_REVISION`, ses profili | Kullanılan üretim/model profilinin birlikte verdiği değerlerdir. Kullanıcıdan model adı veya hash uydurması beklenmez. |
+| STT/TTS `API_KEY` | Gerçek model servisindeki anahtarla aynı olmalı; farklı bir rastgele değer üretmek sunucuyu yapılandırmaz. |
+
+Yeni kurulum şablonunda `LIVEKIT_MANAGED=true`, medya flag'i ise **false**'tur. Bu sayede plain
+`config` de boş yerel key/secret üretir ama container oluşturmaz. Mevcut dosyadaki açık `false`
+değeri korunur; ekrandaki key/secret'in boş kalması bunun sonucudur. Aynı sunucuda kuracaksanız
+mevcut sürümde de `LIVEKIT_MANAGED=true` yazıp `config` çalıştırmanız key/secret üretir.
+Eski bir dosyada endpoint var fakat sahiplik anahtarı yoksa bağlantı harici olarak korunur.
+
+Sihirbazda sunucu sahipliği yerelden hariciye veya tersine değiştirilirse eski sunucunun
+kimlik bilgileri yeni sunucuya taşınmaz: yerelde yeni değerler üretilir, haricide gerçek anahtarlar
+istenir. Aynı konumda tekrar çalıştırmak anahtarları döndürmez. Secret değerleri rapora yazılmaz.
+
+İmaj digest'leri rastgele üretilemez. Elinizde zaten bulunan bir sürüm için
+`docker image inspect <image:version> --format '{{index .RepoDigests 0}}'` digest'i gösterebilir;
+imaj yerelde yoksa bu komutun sonucu varsayılmaz. Voice digest'i backend yayınından gelir.
+Önceki yerel LiveKit geliştirme kabullerinde kullanılan **1.13.11** referansı:
+
+```env
+LIVEKIT_IMAGE=livekit/livekit-server@sha256:25cd902de7cacbd5f1f779f6a6ac1eae20ba8f56b0935934ce6b0ab80d1e3d20
+```
+
+Bu, yerel testte kullanılan sabit sürümdür; yeni bir üretim/kapasite/lisans kabulü iddiası değildir.
+Şablona otomatik atanmaz; operatörün sürüm seçimi korunur.
+Yerel STT/TTS için yeniden üretilebilir/onaylı üretim imajı ve model/voice lisans kabulü hâlâ ayrı
+bir iş kalemidir; deney container'ları otomatik üretim profili yapılmamıştır. Dolayısıyla bu rehber,
+şu an bütün AI ses kurulumunun yalnız üç alanla tamamlandığını iddia etmez.
+
 ## Kullanıcı akışı
 
 ```sh
@@ -152,6 +209,11 @@ bu, DNS/TLS/WebRTC bağlantısını veya konuşma doğruluğunu doğrulamaz. Har
   yapılandırmasında `$` içeren sentetik anahtarın aynen korunduğu ayrıca doğrulandı. `compose config`
   çıktısı round-trip için dolarları yeniden escape edebildiğinden bu kontrol gerçek container
   ortamından yapıldı. İç TLS domain alias'ı da çözümlenen Compose tanımında doğrulandı.
+- Config kolaylaştırması sonrası Windows/Linux tam testleri, vet ve Windows CLI derlemesi geçti.
+  Sihirbazın yerel/harici geçişi, EOF iptali, mevcut anahtarları koruması, eski harici bağlantıyı
+  sahiplenmemesi, `-meeting -check` için soru/yazma olmaması ve `.env.bak` doğrulandı. Yeni varsayılanla
+  gerçek Docker açma/kapama testi de **70.72s** içinde geçti; test kaynakları temizlendi. İmajlar yine
+  hafif fixture süreçleridir; bu testte gerçek STT/TTS çalıştırılmadı.
 - Hazır resmi LiveKit 1.13.11 binary'si üretilen aynı alanlarla ağsız `ports` komutunu kabul etti;
   bu kontrol TLS veya gerçek WebRTC bağlantısı kurmadı. Windows CLI binary'si ayrıca derlendi.
 
