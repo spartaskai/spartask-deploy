@@ -104,18 +104,30 @@ func update(ctx context.Context, s stack, args []string, tags func(context.Conte
 	if err := s.waitHealthy(ctx, "api", 3*time.Minute); err != nil {
 		return revert(err)
 	}
+	if err := waitMeetingServices(ctx, s, env); err != nil {
+		return revert(err)
+	}
 	fmt.Printf("SparTask %s -> %s is running.\n", previous, version)
 	return nil
 }
 
 func runRestart(ctx context.Context, s stack) error {
-	if _, err := prepareConfig(s); err != nil {
+	env, err := prepareConfig(s)
+	if err != nil {
 		return err
+	}
+	// Validate before touching running containers. Omitted optional services are removed by
+	// --remove-orphans, so disabling a feature also stops its former resource consumers.
+	if _, err := s.composeOutput(ctx, "config", "--quiet"); err != nil {
+		return fmt.Errorf("validate deployment before restart: %w", err)
 	}
 	if err := s.compose(ctx, "up", "-d", "--remove-orphans"); err != nil {
 		return err
 	}
-	return s.waitHealthy(ctx, "api", 3*time.Minute)
+	if err := s.waitHealthy(ctx, "api", 3*time.Minute); err != nil {
+		return err
+	}
+	return waitMeetingServices(ctx, s, env)
 }
 
 func runStatus(ctx context.Context, s stack) error {

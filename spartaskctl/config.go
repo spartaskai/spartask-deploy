@@ -21,9 +21,10 @@ type syncResult struct {
 	Invalid     []string  // set but not acceptable
 	Unknown     []string  // in the file, not in the template
 	Notes       []string  // advice about specific settings (filled by advisors)
+	Derived     bool      // generated compose selection changed
 }
 
-func (r *syncResult) changed() bool  { return len(r.Added) > 0 || len(r.Generated) > 0 }
+func (r *syncResult) changed() bool  { return len(r.Added) > 0 || len(r.Generated) > 0 || r.Derived }
 func (r *syncResult) blocking() bool { return len(r.Missing) > 0 || len(r.Invalid) > 0 }
 
 // syncEnv brings file up to date with the template rules: missing settings are added next to
@@ -92,6 +93,7 @@ func containsFold(values []string, value string) bool {
 type installedConfig struct {
 	env, mp             *envFile // mp is nil without the marketplace
 	envResult, mpResult *syncResult
+	meeting             *meetingPlan
 }
 
 // checkInstalledConfig loads .env (and marketplace.env with the marketplace) and syncs them in
@@ -110,6 +112,7 @@ func checkInstalledConfig(s stack) (*installedConfig, error) {
 		return nil, err
 	}
 	validateFormats(env, cfg.envResult)
+	cfg.planMeeting(s)
 	if !scopeOf(env).marketplace {
 		return cfg, nil
 	}
@@ -146,6 +149,9 @@ func readRules(path string) ([]envRule, error) {
 
 // save writes the files that changed, keeping the previous version as <file>.bak (mode 600).
 func (c *installedConfig) save(s stack) error {
+	if err := c.saveMeeting(s); err != nil {
+		return err
+	}
 	for _, item := range []struct {
 		name   string
 		file   *envFile
@@ -223,7 +229,7 @@ func prepareConfig(s stack) (*envFile, error) {
 		return nil, err
 	}
 	for _, result := range cfg.results() {
-		if result.changed() {
+		if result.changed() || cfg.meeting != nil {
 			printReport(os.Stdout, cfg.results(), false, false)
 			break
 		}

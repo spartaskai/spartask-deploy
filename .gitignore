@@ -5,6 +5,7 @@ data/
 backups/
 certs/
 .secrets/
+compose.meeting.generated.yml
 mobile/*.apk
 
 # Build output

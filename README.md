@@ -200,6 +200,18 @@ Komutlar sunucuda `/opt/spartask` klasöründe çalıştırılır (`cd /opt/spar
 
 **Veritabanı.** PostgreSQL dışarıya açık değildir. Sunucuda bağlanmak için: `sudo docker compose exec db sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'`. Veriyi elle değiştirmeyin; firmalar ve süreçler tutarlılığı uygulama üzerinden korur.
 
+## Görüntülü toplantı ve ajan sesi (isteğe bağlı)
+
+Bu servisler varsayılan kapalıdır. `spartaskctl config` açıklamalı meeting/STT/TTS ayarlarını `.env`'ye ekler;
+container başlatmaz, imaj veya model indirmez. Ayarları doldurup `spartaskctl restart` çalıştırın.
+Yalnız açık **ve eksiksiz** özelliklerin servisleri başlar. Kapatılan veya gerekli ayarı eksilen
+özelliklerin eski container'ları sonraki `restart` sırasında durdurulur ve kaldırılır; model önbelleği korunur.
+
+Üç ana anahtar birbirinden ayrıdır: `MEETING_MEDIA_ENABLED` görüntülü toplantı,
+`SPEECH_ENABLED` uygulamanın bütün süreçlerinde ortak STT/TTS, `MEETING_VOICE_ENABLED` toplantı ajan sesidir.
+Ayarların dolu olması tek başına özelliği açmaz. Ayrıntılı kurulum, harici/yerel servis seçimi,
+kaynak sınırları ve kabul testleri: [MEETING_DEPLOYMENT.md](MEETING_DEPLOYMENT.md).
+
 ## Güncelleme
 
 ```bash

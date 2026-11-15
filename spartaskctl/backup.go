@@ -71,7 +71,7 @@ func backup(ctx context.Context, s stack, env *envFile) (string, error) {
 	}); err != nil {
 		return "", err
 	}
-	config := []string{".env", "marketplace.env", "certs", ".secrets"}
+	config := []string{".env", "marketplace.env", "certs", ".secrets", meetingComposeFile}
 	if err := writeBackupFile(filepath.Join(dir, "config.tar.gz"), key, func(w io.Writer) error {
 		return writeTar(w, s.dir, config)
 	}); err != nil {
