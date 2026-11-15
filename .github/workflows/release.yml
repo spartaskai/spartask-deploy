@@ -61,4 +61,8 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.zip dist/install.sh dist/install.ps1 dist/SHA256SUMS --title "$GITHUB_REF_NAME" --generate-notes
+        run: |
+          args=(--title "$GITHUB_REF_NAME" --generate-notes)
+          # A pilot bundle must not become the stable installer download.
+          case "${GITHUB_REF_NAME#v}" in *-*) args+=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.zip dist/install.sh dist/install.ps1 dist/SHA256SUMS "${args[@]}"
