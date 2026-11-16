@@ -1,9 +1,12 @@
 # İngilizce sesli toplantı pilotu
 
-Uygulama imajı: `1.6.1-rc.4`. Kurulum paketi: `v1.5.1-rc.3`.
+Uygulama imajı: `1.6.1-rc.5`. Kurulum paketi: `v1.5.1-rc.4`.
 Bu pilot GPU gerektirmez. Sunucuda yalnız STT çalışır (2 CPU/1 GiB üst sınır). Ajan cevaplarını her
 katılımcının tarayıcısı kendi bilgisayarındaki sesle okur; sunucu TTS'i kapalıdır ve container'ı başlatılmaz.
 Tek sesli oda ile başlayın.
+
+RC.5, RC.4'te sunucu TTS'i kapalıyken süreç worker'ının açılışta çökmesini düzeltir (süreçler ilerlemiyordu).
+RC.4'te geçici olarak `.env`'ye eklenen `SPEECH_TTS_URL` satırı artık gerekmez; `config -speech-local` onu temizler.
 
 RC.4 pilot geri bildirimini giderir:
 
@@ -46,15 +49,15 @@ Listede `en-` ile başlayan bir ses yoksa Windows'ta Ayarlar > Saat ve dil > Kon
 Komutları `.env` ve `spartaskctl` bulunan **mevcut kurulum klasöründe** çalıştırın. Yeni kurulum
 başlatmayın. Önce toplantıyı kapatın.
 
-Sıra önemlidir: uygulama önce eski ses ayarlarıyla rc.4'e geçer (güncelleme başarısız olursa önceki sürüm
-aynı ayarlarla geri döner); yeni ses profili ve tarayıcı modu ancak bundan sonra uygulanır.
+Sıra önemlidir: uygulama önce mevcut ses ayarlarıyla yeni sürüme geçer (güncelleme başarısız olursa önceki
+sürüm aynı ayarlarla geri döner); yeni ses profili ve tarayıcı modu ancak bundan sonra uygulanır.
 
 ```bash
 set -eu
 test -f .env
 test -f spartaskctl
 pilot_tmp=$(mktemp -d)
-pilot_release=https://github.com/spartaskai/spartask-deploy/releases/download/v1.5.1-rc.3
+pilot_release=https://github.com/spartaskai/spartask-deploy/releases/download/v1.5.1-rc.4
 curl -fL "$pilot_release/spartask-deploy-linux-amd64.tar.gz" -o "$pilot_tmp/spartask-deploy-linux-amd64.tar.gz"
 curl -fL "$pilot_release/SHA256SUMS" -o "$pilot_tmp/SHA256SUMS"
 (cd "$pilot_tmp" && grep ' spartask-deploy-linux-amd64.tar.gz$' SHA256SUMS | sha256sum -c -)
@@ -62,7 +65,7 @@ tar -xzf "$pilot_tmp/spartask-deploy-linux-amd64.tar.gz" -C "$pilot_tmp"
 sudo cp -p spartaskctl "spartaskctl.before-speech-$(date +%Y%m%d%H%M%S)"
 sudo install -m 755 "$pilot_tmp/spartask-deploy/spartaskctl" ./spartaskctl
 sudo install -m 644 "$pilot_tmp/spartask-deploy/.env.example" ./.env.example
-sudo ./spartaskctl update 1.6.1-rc.4
+sudo ./spartaskctl update 1.6.1-rc.5
 sudo install -m 644 "$pilot_tmp/spartask-deploy/speech-profile.json" ./speech-profile.json
 sudo ./spartaskctl config -speech-local
 sudo ./spartaskctl config -check
