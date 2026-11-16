@@ -244,6 +244,9 @@ func (p *meetingPlan) managedSpeech(s stack, env *envFile, prefix, service strin
 		// inference at a time, and a second TTS thread makes a sentence ~40% faster.
 		threads := "2"
 		v["environment"] = map[string]string{"SPEECH_SERVICE_API_KEY": env.Get(prefix + "_API_KEY"), "SPARTASK_HEALTH_KEY": env.Get(prefix + "_API_KEY"), "SPEECH_CPU_THREADS": threads}
+		if gate := env.Get("SPEECH_STT_MIN_AVG_LOGPROB"); prefix == "SPEECH_STT" && gate != "" {
+			v["environment"].(map[string]string)["SPEECH_STT_MIN_AVG_LOGPROB"] = gate
+		}
 		v["read_only"], v["user"] = true, "65532:65532"
 		v["tmpfs"] = []string{"/tmp:size=32m,noexec,nosuid"}
 		if prefix == "SPEECH_TTS" {

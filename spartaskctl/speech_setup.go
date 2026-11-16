@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 )
 
 const localSpeechProfile = "english-cpu-v1"
@@ -79,6 +80,11 @@ func (p *meetingPlan) validateLocalSpeech(s stack, env *envFile) {
 	profile := env.Get("SPEECH_LOCAL_PROFILE")
 	if profile == "" {
 		return
+	}
+	if raw := env.Get("SPEECH_STT_MIN_AVG_LOGPROB"); raw != "" {
+		if gate, err := strconv.ParseFloat(raw, 64); err != nil || gate < -3 || gate > 0 {
+			p.invalid = append(p.invalid, "SPEECH_STT_MIN_AVG_LOGPROB: -3 ile 0 arasında bir sayı olmalı (boş: -1.0)")
+		}
 	}
 	if profile != localSpeechProfile {
 		p.invalid = append(p.invalid, "SPEECH_LOCAL_PROFILE: desteklenmeyen profil; özel sağlayıcı için boş bırakın")

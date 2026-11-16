@@ -214,3 +214,47 @@ func TestLocalSpeechRequiresPublishedProfile(t *testing.T) {
 		t.Fatal("missing release profile accepted")
 	}
 }
+
+func TestLocalSpeechPassesBoundedRecognitionConfidenceGate(t *testing.T) {
+	s := installedStack(t, olderEnv)
+	data, err := json.Marshal(speechRelease{Profile: localSpeechProfile, STT: testMeetingImage(), TTS: testMeetingImage(), Voice: testMeetingImage()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(s.path("speech-profile.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	env, err := loadInstalledEnv(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := configureLocalSpeech(s, env); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := checkConfigEnv(s, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, set := cfg.meeting.services["speech-stt"].(map[string]any)["environment"].(map[string]string)["SPEECH_STT_MIN_AVG_LOGPROB"]; set {
+		t.Fatal("unset gate must leave the image default")
+	}
+	env.Set("SPEECH_STT_MIN_AVG_LOGPROB", "-0.8")
+	if cfg, err = checkConfigEnv(s, env); err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.meeting.services["speech-stt"].(map[string]any)["environment"].(map[string]string)["SPEECH_STT_MIN_AVG_LOGPROB"]; got != "-0.8" || len(cfg.meeting.invalid) != 0 {
+		t.Fatalf("gate not passed to STT: %q %v", got, cfg.meeting.invalid)
+	}
+	if _, set := cfg.meeting.services["speech-tts"].(map[string]any)["environment"].(map[string]string)["SPEECH_STT_MIN_AVG_LOGPROB"]; set {
+		t.Fatal("recognition gate leaked into TTS")
+	}
+	for _, invalid := range []string{"0.5", "-4", "strict"} {
+		env.Set("SPEECH_STT_MIN_AVG_LOGPROB", invalid)
+		if cfg, err = checkConfigEnv(s, env); err != nil {
+			t.Fatal(err)
+		}
+		if len(cfg.meeting.invalid) == 0 {
+			t.Fatalf("gate %q accepted", invalid)
+		}
+	}
+}
