@@ -95,6 +95,7 @@ type installedConfig struct {
 	env, mp             *envFile // mp is nil without the marketplace
 	envResult, mpResult *syncResult
 	meeting             *meetingPlan
+	mcp                 *mcpPlan // nil when MCP is off or its settings are invalid
 }
 
 // checkInstalledConfig loads .env (and marketplace.env with the marketplace) and syncs them in
@@ -134,6 +135,7 @@ func checkConfigEnv(s stack, env *envFile) (*installedConfig, error) {
 		cfg.envResult.Notes = append(cfg.envResult.Notes, "Mevcut LIVEKIT_URL korundu: sahiplik ayarı olmayan eski bağlantı harici kabul edildi; yerel yönetime geçiş için config -meeting kullanın.")
 	}
 	validateFormats(env, cfg.envResult)
+	cfg.planMCP(s)
 	cfg.planMeeting(s)
 	if !scopeOf(env).marketplace {
 		return cfg, nil
@@ -172,6 +174,9 @@ func readRules(path string) ([]envRule, error) {
 // save writes the files that changed, keeping the previous version as <file>.bak (mode 600).
 func (c *installedConfig) save(s stack) error {
 	if err := c.saveMeeting(s); err != nil {
+		return err
+	}
+	if err := c.saveMCP(s); err != nil {
 		return err
 	}
 	for _, item := range []struct {
@@ -287,7 +292,7 @@ func prepareConfig(s stack) (*envFile, error) {
 		return nil, err
 	}
 	for _, result := range cfg.results() {
-		if result.changed() || cfg.meeting != nil {
+		if result.changed() || cfg.meeting != nil || cfg.mcp != nil && (cfg.mcp.generate || cfg.mcp.public != nil) {
 			printReport(os.Stdout, cfg.results(), false, false)
 			break
 		}
