@@ -109,6 +109,7 @@ func checkInstalledConfig(s stack) (*installedConfig, error) {
 
 // checkConfigEnv also accepts an in-memory setup draft. The wizard never writes partial input.
 func checkConfigEnv(s stack, env *envFile) (*installedConfig, error) {
+	retiredKeys := retireServerSpeech(env)
 	rules, err := readRules(s.path(".env.example"))
 	if err != nil {
 		return nil, err
@@ -123,6 +124,11 @@ func checkConfigEnv(s stack, env *envFile) (*installedConfig, error) {
 	if cfg.envResult, err = syncEnv(".env", env, rules, nil, false); err != nil {
 		return nil, err
 	}
+	if len(retiredKeys) > 0 {
+		cfg.envResult.Derived = true
+		cfg.envResult.Notes = append(cfg.envResult.Notes, "Kaldırılan sunucu speech ayarları: "+strings.Join(retiredKeys, ", "))
+	}
+
 	if legacyExternal {
 		cfg.envResult.Derived = true
 		cfg.envResult.Notes = append(cfg.envResult.Notes, "Mevcut LIVEKIT_URL korundu: sahiplik ayarı olmayan eski bağlantı harici kabul edildi; yerel yönetime geçiş için config -meeting kullanın.")
@@ -206,7 +212,7 @@ func (c *installedConfig) blocking() bool {
 	return false
 }
 
-// runConfig is `spartaskctl config [-check] [-meeting] [-speech-local | -speech-browser]`.
+// runConfig is `spartaskctl config [-check] [-meeting] [-speech-browser]`.
 func runConfig(ctx context.Context, s stack, args []string) error {
 	return configWith(ctx, s, args, newPrompter(false), defaultAdvisorProbes(s))
 }
@@ -214,30 +220,21 @@ func runConfig(ctx context.Context, s stack, args []string) error {
 func configWith(ctx context.Context, s stack, args []string, p *prompter, probes advisorProbes) error {
 	fs := flag.NewFlagSet("config", flag.ContinueOnError)
 	browserSetup := fs.Bool("speech-browser", false, "move meeting STT/TTS into the browser and disable server speech services")
-	speechSetup := fs.Bool("speech-local", false, "configure the bundled English CPU STT/TTS and voice profile")
 	checkOnly := fs.Bool("check", false, "only report; do not add or generate anything")
 	meetingSetup := fs.Bool("meeting", false, "guide LiveKit setup (with -check: show only the meeting guide, without prompting or writing)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
-		return errors.New("usage: spartaskctl config [-check] [-meeting] [-speech-local | -speech-browser]")
+		return errors.New("usage: spartaskctl config [-check] [-meeting] [-speech-browser]")
 	}
 	env, err := loadInstalledEnv(s)
 	if err != nil {
 		return err
 	}
-	if *browserSetup && *speechSetup {
-		return errors.New("speech-browser and speech-local cannot be combined")
-	}
 	before := env.Bytes()
 	if *browserSetup && !*checkOnly {
 		configureBrowserSpeech(env)
-	}
-	if *speechSetup && !*checkOnly {
-		if err := configureLocalSpeech(s, env); err != nil {
-			return err
-		}
 	}
 	if *meetingSetup && !*checkOnly {
 		if err := configureMeeting(p, env); err != nil {

@@ -1,6 +1,0 @@
-{
-  "profile": "english-cpu-v1",
-  "voice_image": "ghcr.io/spartaskai/spartask-voice@sha256:6255054f8c901cf148ee126f6d6dabc3b5799e5e289a1cbfa7b82a45b6b5ed69",
-  "stt_image": "ghcr.io/spartaskai/spartask-speech-stt@sha256:a530bd71c4d1b748335a317f4b48372d145009c84c51388be84d387627ddea26",
-  "tts_image": "ghcr.io/spartaskai/spartask-speech-tts@sha256:95fede438b012da059d8dbdf86d6d3d7213ae4ab89844dba622c900dcfdbd9b1"
-}

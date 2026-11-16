@@ -1,15 +1,24 @@
 package main
 
-// This transition changes no LiveKit credentials or media settings. Keeping it
-// separate from the old local profile makes repeated config calls safe.
-func configureBrowserSpeech(env *envFile) {
-	for key, value := range map[string]string{
-		"MEETING_BROWSER_SPEECH_ENABLED": "true", "MEETING_VOICE_AGENT_SPEECH": "browser",
-		"MEETING_VOICE_ENABLED": "false", "SPEECH_ENABLED": "false", "SPEECH_STT_ENABLED": "false", "SPEECH_TTS_ENABLED": "false",
-		"SPEECH_STT_MANAGED": "false", "SPEECH_TTS_MANAGED": "false", "SPEECH_LOCAL_PROFILE": "",
-	} {
-		env.Set(key, value)
+import "strings"
+
+// Server inference configuration is retired. Browser and LiveKit settings are separate.
+func retiredServerSpeechKey(key string) bool {
+	return strings.HasPrefix(key, "SPEECH_") || strings.HasPrefix(key, "MEETING_VOICE_") || key == "SPARTASK_VOICE_IMAGE"
+}
+func retireServerSpeech(env *envFile) []string {
+	var removed []string
+	for _, key := range env.keys() {
+		if retiredServerSpeechKey(key) {
+			env.Remove(key)
+			removed = append(removed, key)
+		}
 	}
+	return removed
+}
+func configureBrowserSpeech(env *envFile) {
+	retireServerSpeech(env)
+	env.Set("MEETING_BROWSER_SPEECH_ENABLED", "true")
 	if env.Get("MEETING_BROWSER_SPEECH_LANGUAGE") == "" {
 		env.Set("MEETING_BROWSER_SPEECH_LANGUAGE", "tr")
 	}

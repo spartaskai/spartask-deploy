@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -19,128 +18,55 @@ func meetingFixture(t *testing.T) (stack, *envFile) {
 	}
 	return s, cfg.env
 }
-
 func setMeetingMedia(env *envFile) {
 	env.Set("MEETING_MEDIA_ENABLED", "true")
-	env.Set("LIVEKIT_MANAGED", "false") // This helper explicitly configures an external SFU.
+	env.Set("LIVEKIT_MANAGED", "false")
 	env.Set("LIVEKIT_URL", "wss://meeting.example.com")
 	env.Set("LIVEKIT_INTERNAL_URL", "https://meeting.example.com")
 	env.Set("LIVEKIT_API_KEY", "test-media-key")
 	env.Set("LIVEKIT_API_SECRET", strings.Repeat("secret", 8))
 }
-
-func setMeetingSpeech(env *envFile) {
-	env.Set("SPEECH_ENABLED", "true")
-	env.Set("SPEECH_PROVIDER_REVISION", "test-pinned-revision")
-	for _, kind := range []string{"STT", "TTS"} {
-		env.Set("SPEECH_"+kind+"_URL", "https://speech.example.com/v1")
-		env.Set("SPEECH_"+kind+"_MODEL", "test-model")
-		env.Set("SPEECH_"+kind+"_API_KEY", "test-private-key")
-	}
-}
-
 func testMeetingImage() string { return "example.com/test/service@sha256:" + strings.Repeat("a", 64) }
-
-func manageMeetingSpeech(t *testing.T, s stack, env *envFile) {
-	t.Helper()
-	if err := os.MkdirAll(s.path(".secrets"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	for _, kind := range []string{"STT", "TTS"} {
-		file := filepath.ToSlash(filepath.Join(".secrets", strings.ToLower(kind)+".env"))
-		if err := os.WriteFile(s.path(file), []byte("PRIVATE_MODEL_SETTING=test\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		env.Set("SPEECH_"+kind+"_MANAGED", "true")
-		env.Set("SPEECH_"+kind+"_IMAGE", testMeetingImage())
-		env.Set("SPEECH_"+kind+"_ENV_FILE", file)
-		env.Set("SPEECH_"+kind+"_URL", "")
-	}
-}
-
 func TestMeetingOptionalStateMatrix(t *testing.T) {
 	for _, tc := range []struct {
-		name                 string
-		configure            func(*testing.T, stack, *envFile)
-		media, speech, voice bool
-		services             int
+		name      string
+		configure func(*envFile)
+		media     bool
 	}{
 		{name: "disabled defaults"},
-		{name: "credentials alone never enable", configure: func(_ *testing.T, _ stack, e *envFile) {
-			setMeetingMedia(e)
-			setMeetingSpeech(e)
-			e.Set("MEETING_MEDIA_ENABLED", "false")
-			e.Set("SPEECH_ENABLED", "false")
-		}},
-		{name: "partial media remains off", configure: func(_ *testing.T, _ stack, e *envFile) { setMeetingMedia(e); e.Set("LIVEKIT_API_SECRET", "") }},
-		{name: "video only external", configure: func(_ *testing.T, _ stack, e *envFile) { setMeetingMedia(e) }, media: true},
-		{name: "reusable speech external without meeting", configure: func(_ *testing.T, _ stack, e *envFile) { setMeetingSpeech(e) }, speech: true},
-		{name: "external providers start only voice", configure: func(_ *testing.T, _ stack, e *envFile) {
-			setMeetingMedia(e)
-			setMeetingSpeech(e)
+		{name: "external media", configure: setMeetingMedia, media: true},
+		{name: "partial media", configure: func(e *envFile) { setMeetingMedia(e); e.Set("LIVEKIT_API_SECRET", "") }},
+		{name: "stale model configuration", configure: func(e *envFile) {
+			e.Set("SPEECH_ENABLED", "true")
 			e.Set("MEETING_VOICE_ENABLED", "true")
 			e.Set("SPARTASK_VOICE_IMAGE", testMeetingImage())
-		}, media: true, speech: true, voice: true, services: 1},
-		{name: "voice missing image leaves other features", configure: func(_ *testing.T, _ stack, e *envFile) {
-			setMeetingMedia(e)
-			setMeetingSpeech(e)
-			e.Set("MEETING_VOICE_ENABLED", "true")
-		}, media: true, speech: true},
-		{name: "voice dependency missing", configure: func(_ *testing.T, _ stack, e *envFile) {
-			setMeetingMedia(e)
-			e.Set("MEETING_VOICE_ENABLED", "true")
-			e.Set("SPARTASK_VOICE_IMAGE", testMeetingImage())
-		}, media: true},
-		{name: "managed models", configure: func(t *testing.T, s stack, e *envFile) { setMeetingSpeech(e); manageMeetingSpeech(t, s, e) }, speech: true, services: 2},
-		{name: "missing model credential starts neither model", configure: func(t *testing.T, s stack, e *envFile) {
-			setMeetingSpeech(e)
-			manageMeetingSpeech(t, s, e)
-			e.Set("SPEECH_TTS_API_KEY", "")
 		}},
-		{name: "case insensitive flags", configure: func(_ *testing.T, _ stack, e *envFile) { setMeetingMedia(e); e.Set("MEETING_MEDIA_ENABLED", "TRUE") }, media: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, env := meetingFixture(t)
 			if tc.configure != nil {
-				tc.configure(t, s, env)
+				tc.configure(env)
 			}
 			p := planMeeting(s, env)
-			if len(p.invalid) > 0 {
-				t.Fatalf("invalid plan: %v", p.invalid)
+			if len(p.invalid) > 0 || p.media != tc.media {
+				t.Fatalf("plan: %+v", p)
 			}
-			if p.media != tc.media || p.speech != tc.speech || p.voice != tc.voice || len(p.services) != tc.services {
-				t.Fatalf("state: media=%v speech=%v voice=%v services=%v", p.media, p.speech, p.voice, p.services)
+			for _, name := range []string{"voice", "speech-stt", "speech-tts"} {
+				if _, exists := p.services[name]; exists {
+					t.Fatal("retired service generated", name)
+				}
 			}
-			body, err := p.document(env)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var doc struct {
-				Services map[string]struct {
-					Environment map[string]string `json:"environment"`
-				} `json:"services"`
-			}
-			if err := json.Unmarshal(body, &doc); err != nil {
-				t.Fatal(err)
-			}
-			for _, name := range []string{"api", "worker", "scheduler"} {
-				for _, key := range []string{"MEETING_MEDIA_ENABLED", "SPEECH_ENABLED", "MEETING_VOICE_ENABLED"} {
-					if doc.Services[name].Environment[key] != p.env[key] {
-						t.Fatalf("%s has inconsistent %s", name, key)
-					}
+			for key := range p.env {
+				if retiredServerSpeechKey(key) {
+					t.Fatal("retired setting forwarded", key)
 				}
 			}
 		})
 	}
 }
-
-func TestMeetingApplySelectionAndDisable(t *testing.T) {
+func TestMeetingApplyIsIdempotent(t *testing.T) {
 	s, env := meetingFixture(t)
 	setMeetingMedia(env)
-	setMeetingSpeech(env)
-	manageMeetingSpeech(t, s, env)
-	env.Set("MEETING_VOICE_ENABLED", "true")
-	env.Set("SPARTASK_VOICE_IMAGE", testMeetingImage())
 	if err := env.Save(s.path(".env")); err != nil {
 		t.Fatal(err)
 	}
@@ -151,47 +77,21 @@ func TestMeetingApplySelectionAndDisable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(before, []byte(`"voice":`)) || !bytes.Contains(before, []byte(`"speech-stt":`)) {
-		t.Fatal("enabled services missing")
-	}
-	// The selected settings file is persisted for ordinary docker compose, not just the CLI.
 	saved, err := loadInstalledEnv(s)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Count(saved.Get("COMPOSE_FILE"), meetingComposeFile) != 1 {
-		t.Fatal("generated compose selection missing or duplicated")
-	}
-	if _, err := prepareConfig(s); err != nil {
-		t.Fatal(err)
-	}
-	again, err := os.ReadFile(s.path(meetingComposeFile))
-	if err != nil || !bytes.Equal(before, again) {
-		t.Fatal("repeat preparation must be idempotent")
-	}
-	// An accidentally removed credential must turn off speech AND voice, even though requested
-	// flags remain true. The next up --remove-orphans sees neither service in desired state.
-	saved.Set("SPEECH_TTS_API_KEY", "")
-	if err := saved.Save(s.path(".env")); err != nil {
-		t.Fatal(err)
+		t.Fatal("overlay duplicated")
 	}
 	if _, err := prepareConfig(s); err != nil {
 		t.Fatal(err)
 	}
 	after, err := os.ReadFile(s.path(meetingComposeFile))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{`"voice":`, `"speech-stt":`, `"speech-tts":`} {
-		if bytes.Contains(after, []byte(name)) {
-			t.Fatalf("disabled service retained: %s", name)
-		}
-	}
-	if !bytes.Contains(after, []byte(`"SPEECH_ENABLED": "false"`)) || !bytes.Contains(after, []byte(`"MEETING_MEDIA_ENABLED": "true"`)) {
-		t.Fatal("effective features incorrect")
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("not idempotent")
 	}
 }
-
 func TestMeetingConfigCheckDoesNotWrite(t *testing.T) {
 	s := installedStack(t, olderEnv)
 	if _, err := checkInstalledConfig(s); err != nil {
@@ -323,40 +223,19 @@ func TestMeetingRejectsPopulatedUnsafeConfigurationBeforeApply(t *testing.T) {
 	}
 }
 
-func TestMeetingComposeEscapesDollarsAndScopesVoiceSecrets(t *testing.T) {
+func TestMeetingComposeEscapesDollars(t *testing.T) {
 	s, env := meetingFixture(t)
 	setMeetingMedia(env)
-	setMeetingSpeech(env)
 	env.Set("LIVEKIT_API_SECRET", strings.Repeat("secret-$UNRELATED-", 4))
-	env.Set("MEETING_VOICE_ENABLED", "true")
-	env.Set("SPARTASK_VOICE_IMAGE", testMeetingImage())
-	env.Set("DB_PASSWORD", "db:/p@ss$WORD")
-	env.Set("SECRET_KEY", "must-not-reach-voice")
-	p := planMeeting(s, env)
-	body, err := p.document(env)
+	env.Set("SECRET_KEY", "must-not-reach-overlay")
+	body, err := planMeeting(s, env).document(env)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(body, []byte("$$UNRELATED")) {
-		t.Fatal("Compose interpolation would corrupt secret")
-	}
-	var doc struct {
-		Services map[string]struct {
-			Environment map[string]string `json:"environment"`
-		} `json:"services"`
-	}
-	if err := json.Unmarshal(body, &doc); err != nil {
-		t.Fatal(err)
-	}
-	voice := doc.Services["voice"].Environment
-	if voice["SECRET_KEY"] != "" || strings.Contains(string(body), "must-not-reach-voice") {
-		t.Fatal("unrelated core secret reached generated overlay")
-	}
-	if !strings.Contains(voice["DATABASE_URL"], "db%3A%2Fp%40ss$$WORD") {
-		t.Fatalf("database credentials not escaped: %s", voice["DATABASE_URL"])
+	if !bytes.Contains(body, []byte("$$UNRELATED")) || bytes.Contains(body, []byte("must-not-reach-overlay")) {
+		t.Fatal("secret escaping or isolation failed")
 	}
 }
-
 func TestMeetingNoServicesNeedsNoDockerOrTimeout(t *testing.T) {
 	s, env := meetingFixture(t)
 	env.Set("MEETING_SERVICES_START_TIMEOUT", "unused-invalid-value")

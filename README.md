@@ -200,25 +200,22 @@ Komutlar sunucuda `/opt/spartask` klasöründe çalıştırılır (`cd /opt/spar
 
 **Veritabanı.** PostgreSQL dışarıya açık değildir. Sunucuda bağlanmak için: `sudo docker compose exec db sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'`. Veriyi elle değiştirmeyin; firmalar ve süreçler tutarlılığı uygulama üzerinden korur.
 
-## Görüntülü toplantı ve ajan sesi (isteğe bağlı)
+## Görüntülü toplantı ve tarayıcı sesi
 
-Bu servisler varsayılan kapalıdır. `spartaskctl config` açıklamalı meeting/STT/TTS ayarlarını `.env`'ye ekler;
-container başlatmaz, imaj veya model indirmez. Ayarları doldurup `spartaskctl restart` çalıştırın.
-Kısa LiveKit kurulumu için `spartaskctl config -meeting` kullanın: bu sunucu / harici / kapalı
-seçimini sorar. Aynı sunucuda yalnız meeting adresi, erişilebilir IPv4 ve sabit LiveKit imajı
-girilir; boş key/secret üretilir. `config -meeting -check` soru sormadan ve yazmadan rehberi gösterir.
-Paketin yayımlanan İngilizce CPU STT/TTS profilini seçmek için `spartaskctl config -speech-local`
-kullanın. Bu açık seçim mevcut harici STT/TTS sağlayıcılarını yerel servislerle değiştirir; paketle gelen
-`speech-profile.json` digest'lerini ve eşleşen servis anahtarlarını kullanır. Tekrar seçim anahtarları
-korur. `config -speech-local -check` yalnız mevcut durumu raporlar ve dosya yazmaz. LiveKit ayrıca
-hazırlanmalıdır; ayrıntılar ve kaynak sınırları [MEETING_DEPLOYMENT.md](MEETING_DEPLOYMENT.md) içindedir.
-Yalnız açık **ve eksiksiz** özelliklerin servisleri başlar. Kapatılan veya gerekli ayarı eksilen
-özelliklerin eski container'ları sonraki `restart` sırasında durdurulur ve kaldırılır; model önbelleği korunur.
+LiveKit kurulumu için `spartaskctl config -meeting` kullanın. Aynı sunucuda meeting adresi,
+erişilebilir IPv4 ve sabit LiveKit imajı girilir; boş key/secret değerleri üretilir.
+`config -meeting -check` soru sormadan ve yazmadan rehberi gösterir.
 
-Üç ana anahtar birbirinden ayrıdır: `MEETING_MEDIA_ENABLED` görüntülü toplantı,
-`SPEECH_ENABLED` uygulamanın bütün süreçlerinde ortak STT/TTS, `MEETING_VOICE_ENABLED` toplantı ajan sesidir.
-Ayarların dolu olması tek başına özelliği açmaz. Ayrıntılı kurulum, harici/yerel servis seçimi,
-kaynak sınırları ve kabul testleri: [MEETING_DEPLOYMENT.md](MEETING_DEPLOYMENT.md).
+STT ve TTS katılımcıların tarayıcısında çalışır. `spartaskctl config -speech-browser` tarayıcı
+konuşmasını etkinleştirir; `MEETING_BROWSER_SPEECH_LANGUAGE` dili belirler (tr/en/de).
+Mikrofon açıldığında tanıma otomatik başlar. Ajan adıyla hitap edilir; başka birine seslenene
+kadar aynı ajan muhatap kalır. Görüntülü görüşme `MEETING_MEDIA_ENABLED` ile yönetilir.
+
+Sunucu model servisleri, native voice daemon, speech-local kurulumu ve SPEECH_TO_TEXT /
+TEXT_TO_SPEECH executorları kaldırılmıştır. Yeni config/upgrade eski SPEECH_* / MEETING_VOICE_*
+ve SPARTASK_VOICE_IMAGE ayarlarını temizler. Browser/LiveKit ayarları korunur.
+
+Ayrıntılar: [MEETING_DEPLOYMENT.md](MEETING_DEPLOYMENT.md).
 
 ## Güncelleme
 

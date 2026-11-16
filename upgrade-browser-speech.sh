@@ -15,7 +15,7 @@ docker compose exec -T db sh -c 'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER
 
 backup="$(pwd)/browser-speech-backup-$(date +%Y%m%d%H%M%S)"
 mkdir -m 700 "$backup"
-for file in spartaskctl .env .env.example compose.meeting.generated.yml speech-profile.json; do
+for file in spartaskctl .env .env.example compose.meeting.generated.yml speech-profile.json SPEECH_PILOT.md; do
   if test -f "$file"; then cp -p "$file" "$backup/"; fi
 done
 if test -f .secrets/meeting.caddy; then
@@ -28,7 +28,7 @@ set -eu
 saved=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 stack=$(dirname -- "$saved")
 cd "$stack"
-for file in spartaskctl .env .env.example compose.meeting.generated.yml speech-profile.json; do
+for file in spartaskctl .env .env.example compose.meeting.generated.yml speech-profile.json SPEECH_PILOT.md; do
   if test -f "$saved/$file"; then cp -p "$saved/$file" "./$file"; fi
 done
 if test -f "$saved/.secrets/meeting.caddy"; then
@@ -55,4 +55,6 @@ if test -n "$retired"; then
   printf 'Retired speech containers still exist: %s\n' "$retired" >&2
   exit 1
 fi
+# These are obsolete installation files, already preserved in the rollback backup.
+rm -f -- ./speech-profile.json ./SPEECH_PILOT.md
 printf 'Browser speech configured. Reload the web app; test microphone transcription and agent playback.\n'

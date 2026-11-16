@@ -178,3 +178,19 @@ func keysOf(data []byte) []string {
 	}
 	return keys
 }
+
+// Remove deletes every assignment and its adjacent explanatory comments. Values
+// are never copied to logs. Duplicate and exported dotenv assignments are handled.
+func (e *envFile) Remove(key string) {
+	lines := make([]string, 0, len(e.lines))
+	for _, line := range e.lines {
+		if lineKey(line) == key {
+			for len(lines) > 0 && strings.HasPrefix(strings.TrimSpace(lines[len(lines)-1]), "#") {
+				lines = lines[:len(lines)-1]
+			}
+			continue
+		}
+		lines = append(lines, line)
+	}
+	e.lines = lines
+}

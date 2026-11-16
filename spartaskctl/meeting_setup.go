@@ -13,7 +13,7 @@ import (
 // connection, not arbitrary model images' authentication contracts. Config never starts services.
 func configureMeeting(p *prompter, env *envFile) error {
 	fmt.Fprintln(p.out, "Toplantı bağlantısı kurulumu — kamera zorunlu değildir; config servis başlatmaz.")
-	fmt.Fprintln(p.out, "STT/TTS ve ajan sesi ayarları korunur; bu adım LiveKit bağlantısını hazırlar.")
+	fmt.Fprintln(p.out, "Bu adım görüntülü görüşme için LiveKit bağlantısını hazırlar.")
 	fmt.Fprintln(p.out, "local/external seçimi medyayı etkinleştirir; değişiklik ancak restart ile uygulanır.")
 	modeDefault := "local"
 	if !meetingEnabled(env, "LIVEKIT_MANAGED") && env.Get("LIVEKIT_URL") != "" {
@@ -25,8 +25,8 @@ func configureMeeting(p *prompter, env *envFile) error {
 	}
 	if mode == "off" {
 		env.Set("MEETING_MEDIA_ENABLED", "false")
-		env.Set("MEETING_VOICE_ENABLED", "false")
-		fmt.Fprintln(p.out, "Meeting kapalı seçildi. Ortak SPEECH_ENABLED ayarı diğer süreçler için korunuyor.")
+		env.Set("MEETING_BROWSER_SPEECH_ENABLED", "false")
+		fmt.Fprintln(p.out, "Meeting ve tarayıcı konuşması kapalı seçildi.")
 		return nil
 	}
 	local := mode == "local"
@@ -97,7 +97,7 @@ func askMeetingURL(p *prompter, env *envFile, def string, local bool) (string, e
 
 func validSetupMeetingURL(raw string, env *envFile, local bool) bool {
 	p := &meetingPlan{}
-	u := p.endpoint(raw, "LIVEKIT_URL", "wss", false)
+	u := p.endpoint(raw, "LIVEKIT_URL", "wss")
 	if u == nil {
 		return false
 	}
@@ -145,7 +145,7 @@ func configureExternalMeeting(p *prompter, env *envFile) error {
 	}
 	def := env.Get("LIVEKIT_INTERNAL_URL")
 	probe := &meetingPlan{}
-	if probe.endpoint(def, "LIVEKIT_INTERNAL_URL", "https", false) == nil {
+	if probe.endpoint(def, "LIVEKIT_INTERNAL_URL", "https") == nil {
 		def = "https://" + u.Host
 	}
 	for {
@@ -154,7 +154,7 @@ func configureExternalMeeting(p *prompter, env *envFile) error {
 			return err
 		}
 		check := &meetingPlan{}
-		if check.endpoint(internal, "LIVEKIT_INTERNAL_URL", "https", false) != nil {
+		if check.endpoint(internal, "LIVEKIT_INTERNAL_URL", "https") != nil {
 			env.Set("LIVEKIT_INTERNAL_URL", strings.TrimRight(internal, "/"))
 			break
 		}

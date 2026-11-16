@@ -10,7 +10,6 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -28,60 +27,25 @@ var (
 // settings disable that feature; malformed populated settings block an apply. Requested flags
 // stay in .env; the generated overlay supplies the effective flags to every app process.
 type meetingPlan struct {
-	media, speech, voice bool
-	services             map[string]any
-	env                  map[string]string
-	caddy                string
-	caddyDomain          string
-	notes                []string
-	invalid              []string
+	media       bool
+	services    map[string]any
+	env         map[string]string
+	caddy       string
+	caddyDomain string
+	notes       []string
+	invalid     []string
 }
 
 func planMeeting(s stack, env *envFile) *meetingPlan {
 	p := &meetingPlan{services: map[string]any{}, env: map[string]string{}}
 	browser := meetingEnabled(env, "MEETING_BROWSER_SPEECH_ENABLED")
-	if !browser {
-		p.validateLocalSpeech(s, env)
-	}
 	for _, key := range env.keys() {
-		if strings.HasPrefix(key, "MEETING_") || strings.HasPrefix(key, "LIVEKIT_") || strings.HasPrefix(key, "SPEECH_") {
+		if !retiredServerSpeechKey(key) && (strings.HasPrefix(key, "MEETING_") || strings.HasPrefix(key, "LIVEKIT_")) {
 			p.env[key] = env.Get(key)
 		}
 	}
 	if meetingEnabled(env, "MEETING_MEDIA_ENABLED") {
 		p.media = p.mediaPlan(env)
-	}
-	if !browser && meetingEnabled(env, "SPEECH_ENABLED") {
-		p.speech = p.speechPlan(s, env)
-	}
-	if !browser && meetingEnabled(env, "MEETING_VOICE_ENABLED") {
-		agentSpeech := env.Get("MEETING_VOICE_AGENT_SPEECH")
-		if agentSpeech != "" && agentSpeech != "server" && agentSpeech != "browser" {
-			p.invalid = append(p.invalid, "MEETING_VOICE_AGENT_SPEECH: server veya browser olmalı")
-		}
-		if agentSpeech != "browser" && p.speech && !speechKindEnabled(env, "TTS") {
-			p.invalid = append(p.invalid, "MEETING_VOICE_AGENT_SPEECH: sunucu TTS kapalıyken browser olmalı (ajan cevabı tarayıcıda seslendirilir)")
-		}
-		if !p.media || !p.speech {
-			p.notes = append(p.notes, "Ajan sesi KAPALI: görüntülü toplantı ve ortak STT/TTS birlikte hazır olmalı.")
-		} else if !speechKindEnabled(env, "STT") {
-			p.notes = append(p.notes, "Ajan sesi KAPALI: konuşmayı yazıya çevirmek için SPEECH_STT_ENABLED=true gerekir.")
-		} else if agentSpeech != "browser" && !speechKindEnabled(env, "TTS") {
-			p.notes = append(p.notes, "Ajan sesi KAPALI: sunucu TTS kapalı ve MEETING_VOICE_AGENT_SPEECH browser değil.")
-		} else if p.complete(env, "Ajan sesi", "SPARTASK_VOICE_IMAGE") {
-			p.image(env, "SPARTASK_VOICE_IMAGE")
-			p.capacity(env, "MEETING_VOICE")
-			maxRooms := p.integer(env, "MEETING_VOICE_MAX_ROOMS", 1, 32)
-			p.integer(env, "MEETING_VOICE_MAX_TENANT_ROOMS", 1, maxRooms)
-			p.integer(env, "MEETING_VOICE_MAX_TRACKS", 1, 100)
-			p.voice = true
-			v := p.container(env.Get("SPARTASK_VOICE_IMAGE"), env, "MEETING_VOICE")
-			v["read_only"], v["user"] = true, "65532:65532"
-			v["tmpfs"] = []string{"/tmp:size=16m,noexec,nosuid"}
-			v["stop_grace_period"] = "30s"
-			v["depends_on"] = map[string]any{"migrate": map[string]string{"condition": "service_completed_successfully"}}
-			p.services["voice"] = v
-		}
 	}
 	if browser {
 		if !p.media {
@@ -92,13 +56,9 @@ func planMeeting(s stack, env *envFile) *meetingPlan {
 			p.invalid = append(p.invalid, "MEETING_BROWSER_SPEECH_LANGUAGE: tr, en veya de olmalı")
 		}
 		p.env["MEETING_BROWSER_SPEECH_LANGUAGE"] = language
-		p.env["MEETING_VOICE_AGENT_SPEECH"] = "browser"
-		p.env["SPEECH_STT_ENABLED"], p.env["SPEECH_TTS_ENABLED"] = "false", "false"
 		p.notes = append(p.notes, "STT ve TTS tarayıcıda; voice, speech-stt ve speech-tts sunucu servisleri kapalı.")
 	}
 	p.env["MEETING_MEDIA_ENABLED"] = strconv.FormatBool(p.media)
-	p.env["SPEECH_ENABLED"] = strconv.FormatBool(p.speech)
-	p.env["MEETING_VOICE_ENABLED"] = strconv.FormatBool(p.voice)
 	if p.media {
 		p.duration(env, "MEETING_CLOSE_DRAIN_TIMEOUT", time.Second, time.Minute)
 	}
@@ -108,7 +68,7 @@ func planMeeting(s stack, env *envFile) *meetingPlan {
 	for _, feature := range []struct {
 		name string
 		on   bool
-	}{{"Görüntülü toplantı", p.media}, {"Ortak STT/TTS", p.speech}, {"Ajan sesi", p.voice}} {
+	}{{"Görüntülü toplantı", p.media}, {"Tarayıcı konuşması", browser}} {
 		state := "KAPALI"
 		if feature.on {
 			state = "AÇIK"
@@ -143,13 +103,13 @@ func (p *meetingPlan) mediaPlan(env *envFile) bool {
 	if !p.complete(env, "Görüntülü toplantı", keys...) {
 		return false
 	}
-	u := p.endpoint(env.Get("LIVEKIT_URL"), "LIVEKIT_URL", "wss", false)
+	u := p.endpoint(env.Get("LIVEKIT_URL"), "LIVEKIT_URL", "wss")
 	internal := env.Get("LIVEKIT_INTERNAL_URL")
 	if local && internal == "" && u != nil {
 		internal = "https://" + u.Host
 		p.env["LIVEKIT_INTERNAL_URL"] = internal
 	}
-	p.endpoint(internal, "LIVEKIT_INTERNAL_URL", "https", false)
+	p.endpoint(internal, "LIVEKIT_INTERNAL_URL", "https")
 	if len(env.Get("LIVEKIT_API_SECRET")) < 32 {
 		p.invalid = append(p.invalid, "LIVEKIT_API_SECRET: en az 32 karakter olmalı")
 	}
@@ -205,109 +165,10 @@ func validMeetingTLS(raw string) bool {
 	return regexp.MustCompile(`^[a-zA-Z0-9._+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`).MatchString(raw)
 }
 
-func (p *meetingPlan) speechPlan(s stack, env *envFile) bool {
-	kinds := p.speechKinds(env)
-	if len(kinds) == 0 {
-		p.invalid = append(p.invalid, "SPEECH_STT_ENABLED/SPEECH_TTS_ENABLED: ikisi birden kapalıysa SPEECH_ENABLED=false yapın")
-		return false
-	}
-	keys := []string{"SPEECH_PROVIDER_REVISION"}
-	for _, kind := range kinds {
-		prefix := "SPEECH_" + kind
-		keys = append(keys, prefix+"_MODEL", prefix+"_API_KEY")
-		if kind == "TTS" {
-			keys = append(keys, "SPEECH_TTS_VOICE")
-		}
-		if meetingEnabled(env, prefix+"_MANAGED") {
-			keys = append(keys, prefix+"_IMAGE")
-			if env.Get("SPEECH_LOCAL_PROFILE") != localSpeechProfile {
-				keys = append(keys, prefix+"_ENV_FILE")
-			}
-		} else {
-			keys = append(keys, prefix+"_URL")
-		}
-	}
-	if !p.complete(env, "Ortak STT/TTS", keys...) {
-		return false
-	}
-	global := p.integer(env, "SPEECH_GLOBAL_CONCURRENCY", 1, 8)
-	p.integer(env, "SPEECH_TENANT_CONCURRENCY", 1, global)
-	for _, kind := range kinds {
-		prefix, service := "SPEECH_"+kind, "speech-"+strings.ToLower(kind)
-		local := meetingEnabled(env, prefix+"_MANAGED")
-		endpoint := env.Get(prefix + "_URL")
-		if local && endpoint == "" {
-			endpoint = "http://" + service + ":8000/v1"
-			p.env[prefix+"_URL"] = endpoint
-		}
-		u := p.endpoint(endpoint, prefix+"_URL", "https", true)
-		if !local {
-			continue
-		}
-		p.managedSpeech(s, env, prefix, service, u)
-	}
-	return true
-}
-
-func (p *meetingPlan) managedSpeech(s stack, env *envFile, prefix, service string, u *url.URL) {
-	if u != nil && (u.Scheme != "http" || u.Host != service+":8000" || strings.TrimRight(u.Path, "/") != "/v1") {
-		p.invalid = append(p.invalid, prefix+"_URL: yönetilen servis için boş bırakın veya http://"+service+":8000/v1 kullanın")
-	}
-	p.image(env, prefix+"_IMAGE")
-	p.capacity(env, prefix)
-	file := env.Get(prefix + "_ENV_FILE")
-	path := file
-	if !filepath.IsAbs(path) {
-		path = s.path(path)
-	}
-	builtin := env.Get("SPEECH_LOCAL_PROFILE") == localSpeechProfile
-	info, err := os.Stat(path)
-	if !builtin && (err != nil || !info.Mode().IsRegular()) {
-		p.invalid = append(p.invalid, prefix+"_ENV_FILE: mevcut, normal bir özel env dosyası olmalı")
-	}
-	v := p.container(env.Get(prefix+"_IMAGE"), env, prefix)
-	v["env_file"] = []string{file}
-	v["environment"] = map[string]string{"SPARTASK_HEALTH_KEY": env.Get(prefix + "_API_KEY")}
-	v["volumes"] = []string{strings.ReplaceAll(service, "-", "_") + "_models:/models"}
-	v["healthcheck"] = map[string]any{
-		"test":     []string{"CMD", "python3", "-c", "import os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8000/health',headers={'Authorization':'Bearer '+os.environ['SPARTASK_HEALTH_KEY']}); urllib.request.urlopen(r,timeout=3).close()"},
-		"interval": "5s", "timeout": "4s", "retries": 6, "start_period": "60s",
-	}
-	if builtin {
-		delete(v, "env_file")
-		delete(v, "volumes")
-		// Both bundled providers use two threads: the shared admission runs one
-		// inference at a time, and a second TTS thread makes a sentence ~40% faster.
-		threads := "2"
-		v["environment"] = map[string]string{"SPEECH_SERVICE_API_KEY": env.Get(prefix + "_API_KEY"), "SPARTASK_HEALTH_KEY": env.Get(prefix + "_API_KEY"), "SPEECH_CPU_THREADS": threads}
-		if gate := env.Get("SPEECH_STT_MIN_AVG_LOGPROB"); prefix == "SPEECH_STT" && gate != "" {
-			v["environment"].(map[string]string)["SPEECH_STT_MIN_AVG_LOGPROB"] = gate
-		}
-		v["read_only"], v["user"] = true, "65532:65532"
-		v["tmpfs"] = []string{"/tmp:size=32m,noexec,nosuid"}
-		if prefix == "SPEECH_TTS" {
-			// eSpeak loads its private shared-library copy from a temporary file.
-			v["tmpfs"] = []string{"/tmp:size=32m,exec,nosuid"}
-		}
-	}
-	p.services[service] = v
-}
-
-func (p *meetingPlan) endpoint(raw, key, scheme string, speech bool) *url.URL {
+func (p *meetingPlan) endpoint(raw, key, scheme string) *url.URL {
 	u, err := url.Parse(raw)
-	valid := err == nil && u.Hostname() != "" && u.User == nil && u.RawQuery == "" && !u.ForceQuery && u.Fragment == "" && (u.Scheme == scheme || speech && u.Scheme == "http")
-	if !speech && err == nil && u.Path != "" && u.Path != "/" {
-		valid = false
-	}
-	if speech && err == nil && u.Scheme == "http" {
-		ip, ipErr := netip.ParseAddr(u.Hostname())
-		private := ipErr == nil && (ip.IsPrivate() || ip.IsLoopback())
-		if !private && u.Hostname() != "speech-stt" && u.Hostname() != "speech-tts" && u.Hostname() != "localhost" {
-			valid = false
-		}
-	}
-	if !valid {
-		p.invalid = append(p.invalid, key+": güvenli ve kimlik bilgisi/query içermeyen servis adresi gerekli (HTTP yalnız özel IP veya yönetilen Docker DNS adlarında)")
+	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || (u.Path != "" && u.Path != "/") || u.Scheme != scheme {
+		p.invalid = append(p.invalid, key+": güvenli ve kimlik bilgisi/query içermeyen servis adresi gerekli")
 		return nil
 	}
 	return u
@@ -364,21 +225,6 @@ func (p *meetingPlan) document(env *envFile) ([]byte, error) {
 	for _, name := range []string{"api", "worker", "scheduler"} {
 		services[name] = map[string]any{"environment": p.env}
 	}
-	if p.voice {
-		voiceEnv := map[string]string{}
-		for key, value := range p.env {
-			voiceEnv[key] = value
-		}
-		u := &url.URL{Scheme: "postgres", User: url.UserPassword(env.Get("DB_USER"), env.Get("DB_PASSWORD")), Host: "db:5432", Path: "/" + env.Get("DB_NAME"), RawQuery: "sslmode=disable"}
-		voiceEnv["DATABASE_URL"] = u.String()
-		services["voice"].(map[string]any)["environment"] = voiceEnv
-		deps := services["voice"].(map[string]any)["depends_on"].(map[string]any)
-		for _, name := range []string{"speech-stt", "speech-tts"} {
-			if _, ok := services[name]; ok {
-				deps[name] = map[string]string{"condition": "service_healthy"}
-			}
-		}
-	}
 	// Content changes force Caddy recreation; a changed bind-mounted file alone does not reload it.
 	hash := sha256.Sum256([]byte(p.caddy))
 	caddy := map[string]any{"environment": map[string]string{"SPARTASK_MEETING_CONFIG_HASH": fmt.Sprintf("%x", hash)}}
@@ -390,15 +236,6 @@ func (p *meetingPlan) document(env *envFile) ([]byte, error) {
 	}
 	services["caddy"] = caddy
 	doc := map[string]any{"services": services}
-	volumes := map[string]any{}
-	for _, name := range []string{"speech-stt", "speech-tts"} {
-		if _, on := services[name]; on {
-			volumes[strings.ReplaceAll(name, "-", "_")+"_models"] = map[string]any{}
-		}
-	}
-	if len(volumes) > 0 {
-		doc["volumes"] = volumes
-	}
 	body, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("encode optional meeting compose: %w", err)
@@ -465,19 +302,7 @@ func waitMeetingServices(ctx context.Context, s stack, env *envFile) error {
 	if err != nil {
 		return fmt.Errorf("parse optional service startup timeout: %w", err)
 	}
-	for _, name := range []string{"livekit", "speech-stt", "speech-tts", "voice"} {
-		if _, on := p.services[name]; !on {
-			continue
-		}
-		if name == "speech-stt" || name == "speech-tts" {
-			if err := s.waitHealthy(ctx, name, timeout); err != nil {
-				return fmt.Errorf("optional service %s: %w", name, err)
-			}
-		} else if err := waitMeetingRunning(ctx, s, name, timeout); err != nil {
-			return err
-		}
-	}
-	return nil
+	return waitMeetingRunning(ctx, s, "livekit", timeout)
 }
 
 func waitMeetingRunning(ctx context.Context, s stack, name string, timeout time.Duration) error {
@@ -516,33 +341,4 @@ func waitMeetingRunning(ctx context.Context, s stack, name string, timeout time.
 		case <-time.After(time.Second):
 		}
 	}
-}
-
-// speechKinds lists the provider kinds this installation runs. SPEECH_STT_ENABLED
-// and SPEECH_TTS_ENABLED default to true; a disabled kind needs no provider
-// settings and gets no container (meetings can speak replies in the browser).
-func (p *meetingPlan) speechKinds(env *envFile) []string {
-	var kinds []string
-	for _, kind := range []string{"STT", "TTS"} {
-		key := "SPEECH_" + kind + "_ENABLED"
-		raw := env.Get(key)
-		on := raw == ""
-		if !on {
-			parsed, err := strconv.ParseBool(raw)
-			if err != nil {
-				p.invalid = append(p.invalid, key+": true veya false olmalı")
-			}
-			on = parsed
-		}
-		if on {
-			kinds = append(kinds, kind)
-		}
-	}
-	return kinds
-}
-
-func speechKindEnabled(env *envFile, kind string) bool {
-	raw := env.Get("SPEECH_" + kind + "_ENABLED")
-	on, err := strconv.ParseBool(raw)
-	return raw == "" || (err == nil && on)
 }

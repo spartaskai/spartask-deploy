@@ -144,15 +144,14 @@ func TestMeetingWizardCancellationPreservesInstallation(t *testing.T) {
 	}
 }
 
-func TestMeetingWizardOffKeepsReusableSpeech(t *testing.T) {
+func TestMeetingWizardOffDisablesBrowserSpeech(t *testing.T) {
 	_, env := meetingFixture(t)
-	env.Set("SPEECH_ENABLED", "true")
-	env.Set("MEETING_VOICE_ENABLED", "true")
+	env.Set("MEETING_BROWSER_SPEECH_ENABLED", "true")
 	if err := configureMeeting(setupPrompter("off\n", io.Discard), env); err != nil {
 		t.Fatal(err)
 	}
-	if meetingEnabled(env, "MEETING_MEDIA_ENABLED") || meetingEnabled(env, "MEETING_VOICE_ENABLED") || !meetingEnabled(env, "SPEECH_ENABLED") {
-		t.Fatal("meeting shutdown must not disable shared speech executors")
+	if meetingEnabled(env, "MEETING_MEDIA_ENABLED") || meetingEnabled(env, "MEETING_BROWSER_SPEECH_ENABLED") {
+		t.Fatal("meeting shutdown must also disable browser speech")
 	}
 }
 
