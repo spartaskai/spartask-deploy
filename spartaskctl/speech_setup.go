@@ -63,6 +63,10 @@ func configureLocalSpeech(s stack, env *envFile) error {
 	for key, value := range map[string]string{
 		"SPEECH_LOCAL_PROFILE": localSpeechProfile, "SPEECH_PROVIDER_REVISION": localSpeechProfile,
 		"SPEECH_ENABLED": "true", "MEETING_VOICE_ENABLED": "true", "SPEECH_LANGUAGE": "en",
+		// Agent replies are spoken by each listener's browser with an on-device
+		// voice; the bundled TTS stays configured but off (no container, no RAM).
+		// Re-enable with SPEECH_TTS_ENABLED=true and MEETING_VOICE_AGENT_SPEECH=server.
+		"SPEECH_STT_ENABLED": "true", "SPEECH_TTS_ENABLED": "false", "MEETING_VOICE_AGENT_SPEECH": "browser",
 		"SPEECH_STT_MODEL": "whisper-base.en", "SPEECH_TTS_MODEL": "kokoro-en", "SPEECH_TTS_VOICE": "af_heart",
 		"SPEECH_STT_IMAGE": release.STT, "SPEECH_TTS_IMAGE": release.TTS, "SPARTASK_VOICE_IMAGE": release.Voice,
 		"SPEECH_STT_CPUS": "2", "SPEECH_STT_MEMORY": "1g", "SPEECH_TTS_CPUS": "2", "SPEECH_TTS_MEMORY": "2g",

@@ -58,6 +58,25 @@ func TestLocalSpeechProfileGeneratesMatchingCredentialsAndPreservesThem(t *testi
 	if vars["SPEECH_CPU_THREADS"] != "2" {
 		t.Fatal("STT must use two CPU threads")
 	}
+	// The profile speaks agent replies in the browser: no TTS container runs.
+	if _, running := cfg.meeting.services["speech-tts"]; running || env.Get("MEETING_VOICE_AGENT_SPEECH") != "browser" || env.Get("SPEECH_TTS_ENABLED") != "false" {
+		t.Fatal("browser agent speech must leave the bundled TTS off")
+	}
+	env.Set("MEETING_VOICE_AGENT_SPEECH", "server")
+	if cfg, err = checkConfigEnv(s, env); err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.meeting.invalid) == 0 {
+		t.Fatal("server agent speech accepted without server TTS")
+	}
+	env.Set("SPEECH_TTS_ENABLED", "true")
+	if cfg, err = checkConfigEnv(s, env); err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.meeting.invalid) != 0 {
+		t.Fatalf("re-enabled server TTS invalid: %v", cfg.meeting.invalid)
+	}
+	service = cfg.meeting.services["speech-stt"].(map[string]any)
 	tts := cfg.meeting.services["speech-tts"].(map[string]any)
 	if service["tmpfs"].([]string)[0] != "/tmp:size=32m,noexec,nosuid" || tts["tmpfs"].([]string)[0] != "/tmp:size=32m,exec,nosuid" {
 		t.Fatal("eSpeak requires executable temporary shared-library mappings only in TTS")
@@ -244,9 +263,6 @@ func TestLocalSpeechPassesBoundedRecognitionConfidenceGate(t *testing.T) {
 	}
 	if got := cfg.meeting.services["speech-stt"].(map[string]any)["environment"].(map[string]string)["SPEECH_STT_MIN_AVG_LOGPROB"]; got != "-0.8" || len(cfg.meeting.invalid) != 0 {
 		t.Fatalf("gate not passed to STT: %q %v", got, cfg.meeting.invalid)
-	}
-	if _, set := cfg.meeting.services["speech-tts"].(map[string]any)["environment"].(map[string]string)["SPEECH_STT_MIN_AVG_LOGPROB"]; set {
-		t.Fatal("recognition gate leaked into TTS")
 	}
 	for _, invalid := range []string{"0.5", "-4", "strict"} {
 		env.Set("SPEECH_STT_MIN_AVG_LOGPROB", invalid)

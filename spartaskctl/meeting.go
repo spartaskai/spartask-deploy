@@ -52,8 +52,19 @@ func planMeeting(s stack, env *envFile) *meetingPlan {
 		p.speech = p.speechPlan(s, env)
 	}
 	if meetingEnabled(env, "MEETING_VOICE_ENABLED") {
+		agentSpeech := env.Get("MEETING_VOICE_AGENT_SPEECH")
+		if agentSpeech != "" && agentSpeech != "server" && agentSpeech != "browser" {
+			p.invalid = append(p.invalid, "MEETING_VOICE_AGENT_SPEECH: server veya browser olmalı")
+		}
+		if agentSpeech != "browser" && p.speech && !speechKindEnabled(env, "TTS") {
+			p.invalid = append(p.invalid, "MEETING_VOICE_AGENT_SPEECH: sunucu TTS kapalıyken browser olmalı (ajan cevabı tarayıcıda seslendirilir)")
+		}
 		if !p.media || !p.speech {
 			p.notes = append(p.notes, "Ajan sesi KAPALI: görüntülü toplantı ve ortak STT/TTS birlikte hazır olmalı.")
+		} else if !speechKindEnabled(env, "STT") {
+			p.notes = append(p.notes, "Ajan sesi KAPALI: konuşmayı yazıya çevirmek için SPEECH_STT_ENABLED=true gerekir.")
+		} else if agentSpeech != "browser" && !speechKindEnabled(env, "TTS") {
+			p.notes = append(p.notes, "Ajan sesi KAPALI: sunucu TTS kapalı ve MEETING_VOICE_AGENT_SPEECH browser değil.")
 		} else if p.complete(env, "Ajan sesi", "SPARTASK_VOICE_IMAGE") {
 			p.image(env, "SPARTASK_VOICE_IMAGE")
 			p.capacity(env, "MEETING_VOICE")
@@ -179,9 +190,18 @@ func validMeetingTLS(raw string) bool {
 }
 
 func (p *meetingPlan) speechPlan(s stack, env *envFile) bool {
-	keys := []string{"SPEECH_PROVIDER_REVISION", "SPEECH_STT_MODEL", "SPEECH_STT_API_KEY", "SPEECH_TTS_MODEL", "SPEECH_TTS_API_KEY", "SPEECH_TTS_VOICE"}
-	for _, kind := range []string{"STT", "TTS"} {
+	kinds := p.speechKinds(env)
+	if len(kinds) == 0 {
+		p.invalid = append(p.invalid, "SPEECH_STT_ENABLED/SPEECH_TTS_ENABLED: ikisi birden kapalıysa SPEECH_ENABLED=false yapın")
+		return false
+	}
+	keys := []string{"SPEECH_PROVIDER_REVISION"}
+	for _, kind := range kinds {
 		prefix := "SPEECH_" + kind
+		keys = append(keys, prefix+"_MODEL", prefix+"_API_KEY")
+		if kind == "TTS" {
+			keys = append(keys, "SPEECH_TTS_VOICE")
+		}
 		if meetingEnabled(env, prefix+"_MANAGED") {
 			keys = append(keys, prefix+"_IMAGE")
 			if env.Get("SPEECH_LOCAL_PROFILE") != localSpeechProfile {
@@ -196,7 +216,7 @@ func (p *meetingPlan) speechPlan(s stack, env *envFile) bool {
 	}
 	global := p.integer(env, "SPEECH_GLOBAL_CONCURRENCY", 1, 8)
 	p.integer(env, "SPEECH_TENANT_CONCURRENCY", 1, global)
-	for _, kind := range []string{"STT", "TTS"} {
+	for _, kind := range kinds {
 		prefix, service := "SPEECH_"+kind, "speech-"+strings.ToLower(kind)
 		local := meetingEnabled(env, prefix+"_MANAGED")
 		endpoint := env.Get(prefix + "_URL")
@@ -480,4 +500,33 @@ func waitMeetingRunning(ctx context.Context, s stack, name string, timeout time.
 		case <-time.After(time.Second):
 		}
 	}
+}
+
+// speechKinds lists the provider kinds this installation runs. SPEECH_STT_ENABLED
+// and SPEECH_TTS_ENABLED default to true; a disabled kind needs no provider
+// settings and gets no container (meetings can speak replies in the browser).
+func (p *meetingPlan) speechKinds(env *envFile) []string {
+	var kinds []string
+	for _, kind := range []string{"STT", "TTS"} {
+		key := "SPEECH_" + kind + "_ENABLED"
+		raw := env.Get(key)
+		on := raw == ""
+		if !on {
+			parsed, err := strconv.ParseBool(raw)
+			if err != nil {
+				p.invalid = append(p.invalid, key+": true veya false olmalı")
+			}
+			on = parsed
+		}
+		if on {
+			kinds = append(kinds, kind)
+		}
+	}
+	return kinds
+}
+
+func speechKindEnabled(env *envFile, kind string) bool {
+	raw := env.Get("SPEECH_" + kind + "_ENABLED")
+	on, err := strconv.ParseBool(raw)
+	return raw == "" || (err == nil && on)
 }
