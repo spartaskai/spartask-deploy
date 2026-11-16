@@ -65,8 +65,8 @@ func TestLocalSpeechProfileGeneratesMatchingCredentialsAndPreservesThem(t *testi
 	if env.Get("SPEECH_TTS_MEMORY") != "2g" {
 		t.Fatal("TTS requires the measured pilot memory limit")
 	}
-	if tts["environment"].(map[string]string)["SPEECH_CPU_THREADS"] != "1" {
-		t.Fatal("TTS must use one CPU thread")
+	if tts["environment"].(map[string]string)["SPEECH_CPU_THREADS"] != "2" || env.Get("SPEECH_TTS_CPUS") != "2" {
+		t.Fatal("TTS must use two CPU threads within a two-CPU limit")
 	}
 	for _, container := range []map[string]any{service, tts} {
 		if container["read_only"] != true || container["user"] != "65532:65532" {

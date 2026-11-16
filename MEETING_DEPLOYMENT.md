@@ -169,8 +169,8 @@ harici sağlayıcıyı bu profile geçirmez. `config -speech-local -check` yaln�
 profil seçmez, anahtar üretmez ve dosya yazmaz.
 
 Profil İngilizce `whisper-base.en`, `kokoro-en` ve `af_heart` kullanır; CPU thread sayıları STT=2,
-TTS=1'dir. Başlangıç container sınırları STT 2 CPU/1g ve TTS 1 CPU/2g, ortak inference eşzamanlılığı
-1'dir. Bunlar ölçülmüş kapasite veya minimum RAM garantisi değildir. İngilizce dışı ihtiyaçlarda özel
+TTS=2'dir. Başlangıç container sınırları STT 2 CPU/1g ve TTS 2 CPU/2g, ortak inference eşzamanlılığı
+1'dir (STT ve TTS aynı anda model çalıştırmaz). Bunlar ölçülmüş kapasite veya minimum RAM garantisi değildir. İngilizce dışı ihtiyaçlarda özel
 sağlayıcı yapılandırın ve `SPEECH_LOCAL_PROFILE` alanını boş bırakın. Bilinmeyen profil değerleri ve
 paketle uyuşmayan model/imaj ayarları geçersizdir.
 

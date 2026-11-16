@@ -240,10 +240,9 @@ func (p *meetingPlan) managedSpeech(s stack, env *envFile, prefix, service strin
 	if builtin {
 		delete(v, "env_file")
 		delete(v, "volumes")
-		threads := "1"
-		if prefix == "SPEECH_STT" {
-			threads = "2"
-		}
+		// Both bundled providers use two threads: the shared admission runs one
+		// inference at a time, and a second TTS thread makes a sentence ~40% faster.
+		threads := "2"
 		v["environment"] = map[string]string{"SPEECH_SERVICE_API_KEY": env.Get(prefix + "_API_KEY"), "SPARTASK_HEALTH_KEY": env.Get(prefix + "_API_KEY"), "SPEECH_CPU_THREADS": threads}
 		v["read_only"], v["user"] = true, "65532:65532"
 		v["tmpfs"] = []string{"/tmp:size=32m,noexec,nosuid"}
