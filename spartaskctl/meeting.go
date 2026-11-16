@@ -39,7 +39,10 @@ type meetingPlan struct {
 
 func planMeeting(s stack, env *envFile) *meetingPlan {
 	p := &meetingPlan{services: map[string]any{}, env: map[string]string{}}
-	p.validateLocalSpeech(s, env)
+	browser := meetingEnabled(env, "MEETING_BROWSER_SPEECH_ENABLED")
+	if !browser {
+		p.validateLocalSpeech(s, env)
+	}
 	for _, key := range env.keys() {
 		if strings.HasPrefix(key, "MEETING_") || strings.HasPrefix(key, "LIVEKIT_") || strings.HasPrefix(key, "SPEECH_") {
 			p.env[key] = env.Get(key)
@@ -48,10 +51,10 @@ func planMeeting(s stack, env *envFile) *meetingPlan {
 	if meetingEnabled(env, "MEETING_MEDIA_ENABLED") {
 		p.media = p.mediaPlan(env)
 	}
-	if meetingEnabled(env, "SPEECH_ENABLED") {
+	if !browser && meetingEnabled(env, "SPEECH_ENABLED") {
 		p.speech = p.speechPlan(s, env)
 	}
-	if meetingEnabled(env, "MEETING_VOICE_ENABLED") {
+	if !browser && meetingEnabled(env, "MEETING_VOICE_ENABLED") {
 		agentSpeech := env.Get("MEETING_VOICE_AGENT_SPEECH")
 		if agentSpeech != "" && agentSpeech != "server" && agentSpeech != "browser" {
 			p.invalid = append(p.invalid, "MEETING_VOICE_AGENT_SPEECH: server veya browser olmalı")
@@ -79,6 +82,19 @@ func planMeeting(s stack, env *envFile) *meetingPlan {
 			v["depends_on"] = map[string]any{"migrate": map[string]string{"condition": "service_completed_successfully"}}
 			p.services["voice"] = v
 		}
+	}
+	if browser {
+		if !p.media {
+			p.invalid = append(p.invalid, "Tarayıcı konuşması için görüntülü toplantı altyapısı hazır olmalı")
+		}
+		language := envOr(env, "MEETING_BROWSER_SPEECH_LANGUAGE", "tr")
+		if language != "tr" && language != "en" && language != "de" {
+			p.invalid = append(p.invalid, "MEETING_BROWSER_SPEECH_LANGUAGE: tr, en veya de olmalı")
+		}
+		p.env["MEETING_BROWSER_SPEECH_LANGUAGE"] = language
+		p.env["MEETING_VOICE_AGENT_SPEECH"] = "browser"
+		p.env["SPEECH_STT_ENABLED"], p.env["SPEECH_TTS_ENABLED"] = "false", "false"
+		p.notes = append(p.notes, "STT ve TTS tarayıcıda; voice, speech-stt ve speech-tts sunucu servisleri kapalı.")
 	}
 	p.env["MEETING_MEDIA_ENABLED"] = strconv.FormatBool(p.media)
 	p.env["SPEECH_ENABLED"] = strconv.FormatBool(p.speech)

@@ -206,13 +206,14 @@ func (c *installedConfig) blocking() bool {
 	return false
 }
 
-// runConfig is `spartaskctl config [-check] [-meeting] [-speech-local]`.
+// runConfig is `spartaskctl config [-check] [-meeting] [-speech-local | -speech-browser]`.
 func runConfig(ctx context.Context, s stack, args []string) error {
 	return configWith(ctx, s, args, newPrompter(false), defaultAdvisorProbes(s))
 }
 
 func configWith(ctx context.Context, s stack, args []string, p *prompter, probes advisorProbes) error {
 	fs := flag.NewFlagSet("config", flag.ContinueOnError)
+	browserSetup := fs.Bool("speech-browser", false, "move meeting STT/TTS into the browser and disable server speech services")
 	speechSetup := fs.Bool("speech-local", false, "configure the bundled English CPU STT/TTS and voice profile")
 	checkOnly := fs.Bool("check", false, "only report; do not add or generate anything")
 	meetingSetup := fs.Bool("meeting", false, "guide LiveKit setup (with -check: show only the meeting guide, without prompting or writing)")
@@ -220,13 +221,19 @@ func configWith(ctx context.Context, s stack, args []string, p *prompter, probes
 		return err
 	}
 	if fs.NArg() != 0 {
-		return errors.New("usage: spartaskctl config [-check] [-meeting] [-speech-local]")
+		return errors.New("usage: spartaskctl config [-check] [-meeting] [-speech-local | -speech-browser]")
 	}
 	env, err := loadInstalledEnv(s)
 	if err != nil {
 		return err
 	}
+	if *browserSetup && *speechSetup {
+		return errors.New("speech-browser and speech-local cannot be combined")
+	}
 	before := env.Bytes()
+	if *browserSetup && !*checkOnly {
+		configureBrowserSpeech(env)
+	}
 	if *speechSetup && !*checkOnly {
 		if err := configureLocalSpeech(s, env); err != nil {
 			return err

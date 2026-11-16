@@ -298,3 +298,23 @@ Canlıya açmadan önce gerçek sertifika/DNS, mobil veri ve şirket ağı/TURN 
 mikrofon/AI/seslendirme, onaylı karar ve kapanış/oda temizliği testi yapılmalıdır. Container'ların
 başlaması bu kabulün yerine geçmez. Bu değişiklik canlı sunucuyu, yayımlanmış imajları veya başka
 grubun branch'ini değiştirmedi.
+
+## Tarayıcı STT/TTS
+
+Aktif toplantıları bitirip ortak speech işlerini boşalttıktan sonra yeni sürümde
+`spartaskctl config -speech-browser` ve `spartaskctl config -check` çalıştırın.
+Bu geçiş LiveKit ayarlarını korur; sunucu speech ve voice özelliklerini kapatır.
+`update`/`restart` üretilen compose ile eski voice, speech-stt ve speech-tts
+container'larını kaldırır. Veriler ve model cache'leri silinmez.
+
+Varsayılan dil Türkçedir: MEETING_BROWSER_SPEECH_LANGUAGE=tr (en/de de desteklenir).
+Kendi mikrofonunuzu açıp transkripsiyonu başlatın. Agentlar seçilen hedeflere veya
+adıyla hitap edilmesine göre cevap verir. Tarayıcı tanıması sistemin varsayılan
+mikrofonunu ve tarayıcı üreticisinin uzak hizmetini kullanabilir. Tanıma desteklenmiyorsa
+yazılı mesajla devam edilir. Agent konuşurken tanıma durur; söz almak için agentı durdurun.
+Aynı toplantıda yalnız bir sekme konuşmayı yönetir. Tarayıcıda ses üretilmesi
+SFU kaydında agent audio track'i bulunduğu veya kullanıcının yanıtı duyduğu anlamına gelmez.
+
+Eski SPEECH_TO_TEXT/TEXT_TO_SPEECH node'ları API/worker tarafından artık sunulmaz
+ve başlatılmaz. Başka süreçlerdeki kullanımlar geçiş öncesi envantere alınmalıdır.
+Eski iş geçmişi ve migration'lar geri dönüş ve denetim için korunur.

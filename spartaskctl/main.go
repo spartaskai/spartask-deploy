@@ -4,7 +4,7 @@
 //	spartaskctl install -activation CODE   a customer's installation activated on the on-prem page
 //	spartaskctl update [version]           download, backup, switch release, migrate, health check
 //	spartaskctl restart                    apply .env changes
-//	spartaskctl config [-check] [-meeting] [-speech-local] add settings and configure optional services
+//	spartaskctl config [-check] [-meeting] [-speech-local | -speech-browser] add settings and configure optional services
 //	spartaskctl status                     containers and schema migrations
 //	spartaskctl logs [service]             follow logs
 //	spartaskctl backup                     database dumps + storage + config into backups/
@@ -52,10 +52,11 @@ Commands:
                                  download the release (default: the latest), backup, switch, apply
                                  migrations, health check
   restart                        apply .env changes (docker compose up -d)
-  config [-check] [-meeting] [-speech-local]
+  config [-check] [-meeting] [-speech-local | -speech-browser]
                                  add settings, generate local secrets, explain missing values;
                                  -meeting guides LiveKit setup; -meeting -check only shows its guide
                                  -speech-local selects bundled English CPU STT/TTS and voice;
+                                 -speech-browser retires server speech and uses browser STT/TTS;
                                  -check reports current settings without writing or selecting a profile
   status                         version, containers, schema migrations
   logs [service]                 follow logs (api, worker, scheduler, migrate, caddy, db ...)

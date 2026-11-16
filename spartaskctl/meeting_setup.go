@@ -202,7 +202,7 @@ func printMeetingGuide(w io.Writer, cfg *installedConfig, dryRun bool) {
 		fmt.Fprintln(w, "  Aynı sunucuda kurmak için: spartaskctl config -meeting → local. Böylece boş key/secret otomatik üretilir.")
 	}
 	fmt.Fprintln(w, "  Port, CPU, bellek ve oda sınırları gelişmiş ayarlardır; normal kurulumda varsayılan bırakın.")
-	fmt.Fprintln(w, "  Ajan sesi ayrıca STT/TTS model bağlantıları ve SPARTASK_VOICE_IMAGE gerektirir; LiveKit tek başına ajanı konuşturmaz.")
+	fmt.Fprintln(w, "  Tarayıcı STT/TTS geçişi: spartaskctl config -speech-browser (model servisi veya voice imajı gerekmez).")
 	fmt.Fprintln(w, "  STT/TTS anahtarı sağlayıcıdakiyle aynı olmalı; sağlayıcıyı yapılandırmadan rastgele anahtar üretmeyin.")
 	fmt.Fprintln(w, "  Rehber: MEETING_DEPLOYMENT.md · Uygulama: spartaskctl restart (config container başlatmaz).")
 }
