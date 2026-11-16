@@ -1,85 +1,96 @@
 # İngilizce sesli toplantı pilotu
 
-Uygulama imajı: `1.6.1-rc.3`. Kurulum paketi: `v1.5.1-rc.2`.
-Bu pilot GPU gerektirmez. STT 2 CPU/1 GiB, TTS 2 CPU/2 GiB üst sınırı kullanır. Ortak inference
-tek eşzamanlıdır; STT ve TTS aynı anda model çalıştırmaz, toplam üst sınır 4 çekirdekli sunucuya sığar.
+Uygulama imajı: `1.6.1-rc.4`. Kurulum paketi: `v1.5.1-rc.3`.
+Bu pilot GPU gerektirmez. Sunucuda yalnız STT çalışır (2 CPU/1 GiB üst sınır). Ajan cevaplarını her
+katılımcının tarayıcısı kendi bilgisayarındaki sesle okur; sunucu TTS'i kapalıdır ve container'ı başlatılmaz.
 Tek sesli oda ile başlayın.
 
-RC.3 pilot geri bildirimini giderir:
+RC.4 pilot geri bildirimini giderir:
 
-- **Ajana adıyla seslenme.** Arayüzde seçim gerekmez. "Ada, what did you finish yesterday?" gibi
-  ajanın tam adını ya da (başka katılımcıyla paylaşılmıyorsa) ilk adını söyleyin. Adsız devam
-  cümleleri, son seslenilen ajana 30 saniye boyunca gider (`MEETING_VOICE_ADDRESS_WINDOW`). Pencereyi
-  ajanın sesli cevabı yeniler; bir insanın adını söylemek pencereyi kapatır. Arayüz seçimi de çalışır.
-- **Cevap cümle cümle seslendirilir.** İlk ses, tüm cevap yerine ilk cümle üretilince başlar. Geliştirme
-  makinesinde (VPS'ten hızlı) üç cümlelik cevabın ilk sesi yaklaşık 3 saniyede, söz kesmeden hemen
-  sonraki cevapta yaklaşık 5 saniyede geldi; VPS'te daha uzun olabilir. `processing_ms` artarsa TTS
-  için `SPEECH_TTS_CPUS=1` deneyin. Ajanlara sesli toplantıda en fazla
-  üç kısa cümleyle cevap vermeleri söylenir.
-- **Söz kesme modeli yeniden yüklemez.** Ajanın sözü kesildiğinde TTS modeli kapanıp yeniden
-  ısınmaz; sonraki cevap gecikmez.
-- **Gürültü yazıya dökülmez.** Uğultu, cızırtı ve sessizlikten üretilen tekrarlı sahte metinler
-  STT'de elenir.
-- **Ses kapanmaz.** Ajan konuşurken kapasite bekleyen bir cümle düşerse yalnız o cümle atlanır; toplantının
-  sesi kapanmaz.
+- **Ajan sesi tarayıcıda.** Ajan cevabı geldiği anda tarayıcı onu cümle cümle okur. Yalnız cihaz üstü
+  sesler kullanılır (Chrome'un "Google …", Edge'in "… Online (Natural)" gibi internet sesleri hiç
+  kullanılmaz); cevap metni bilgisayardan çıkmaz. "AI sesleri" düğmesiyle kapatılabilir. Bilgisayarda
+  İngilizce yerel ses yoksa uyarı çıkar ve cevaplar yalnız yazılı görünür.
+- **Hoparlör yankısı yazıya dökülmez.** Hoparlörden mikrofona sızan ajan cevabı, okunduğu süre boyunca
+  kelime örtüşmesiyle tanınıp atılır (`voice_transcription outcome=echo`). Ajan konuşurken yakalanan ses
+  yalnız açıkça söylenen ada hitap eder; ajan kendi cevabına cevap vermez.
+- **Söz kesme.** Siz konuşunca, sunucu sesinizi yazıya döktüğü anda tarayıcı ajanı susturur. Bu,
+  STT süresi kadar gecikir. Kulaklık yankıyı tamamen ortadan kaldırır.
+- **Uydurma cümleler elenir.** Ses, Whisper'dan önce konuşma algılayıcıdan (Silero VAD) geçer; düşük
+  güvenli parçalar (`SPEECH_STT_MIN_AVG_LOGPROB`, varsayılan -1.0) atılır. İngilizce olmayan konuşma ve
+  oda gürültüsü sahte İngilizce cümleye dönüşmez. Kısa aksanlı cevaplar ("Thank you.") kaybolursa eşiği
+  düşürün (ör. -1.2); sahte cümle sürerse yükseltin (ör. -0.8).
 
-RC.2'den devralınanlar: STT tek geçişte çözümler, ses parçası üst sınırı 6 saniye, mesaj kontrol aralığı
-250 ms'dir. Önceden açıkça tanımlanmış `MEETING_VOICE_MAX_SEGMENT_MS` / `MEETING_VOICE_POLL` değerleri
-varsayılanların önüne geçer. Bu ölçümler canlı VPS için gecikme garantisi değildir.
+RC.3'ten devralınanlar: ajana adıyla seslenme (seçim gerekmez; adsız devam cümleleri son seslenilen ajana
+30 saniye gider, `MEETING_VOICE_ADDRESS_WINDOW`), STT'de ajan adı ipucu ve gürültü döngüsü filtresi.
 
-Teşhis: `docker logs --since 5m spartask-voice-1` içindeki `voice_transcription` satırı `outcome`,
-`audio_ms`, `queue_ms`, `processing_ms` alanlarını gösterir. STT/TTS container'larındaki `speech_inference`
-satırı modelin `elapsed_ms` süresini gösterir. Konuşma metni kaydedilmez.
+Teşhis (konuşma metni kaydedilmez):
+- `docker logs --since 5m spartask-voice-1`: `voice_transcription outcome=posted|empty|echo|dropped_capacity|failed`,
+  `addressed`, `audio_ms`, `processing_ms`.
+- `docker logs --since 5m spartask-speech-stt-1`: `speech_transcription ... min_avg_logprob=... max_no_speech=...`
+  ve `speech_inference elapsed_ms`.
+
+## Kullanıcı bilgisayarı
+
+Ajan sesini duymak için tarayıcının İngilizce bir **yerel** sesi olmalı. Toplantı sayfasında F12 > Console:
+
+```js
+speechSynthesis.getVoices().filter(v => v.localService).map(v => v.name + ' | ' + v.lang)
+```
+
+Listede `en-` ile başlayan bir ses yoksa Windows'ta Ayarlar > Saat ve dil > Konuşma > Ses ekle'den
+İngilizce (ör. English (United States)) sesini kurup tarayıcıyı yeniden başlatın.
 
 ## Mevcut Linux sunucusunda güncelleme
 
-Komutları `.env` ve `spartaskctl` bulunan **mevcut kurulum klasöründe** çalıştırın.
-Yeni kurulum başlatmayın. Önce toplantıyı kapatın. Registry'deki yeni speech paketleri Public
-olmalı; private tutuluyorsa sunucu uygun registry oturumuna sahip olmalıdır.
+Komutları `.env` ve `spartaskctl` bulunan **mevcut kurulum klasöründe** çalıştırın. Yeni kurulum
+başlatmayın. Önce toplantıyı kapatın.
+
+Sıra önemlidir: uygulama önce eski ses ayarlarıyla rc.4'e geçer (güncelleme başarısız olursa önceki sürüm
+aynı ayarlarla geri döner); yeni ses profili ve tarayıcı modu ancak bundan sonra uygulanır.
 
 ```bash
 set -eu
 test -f .env
 test -f spartaskctl
 pilot_tmp=$(mktemp -d)
-pilot_release=https://github.com/spartaskai/spartask-deploy/releases/download/v1.5.1-rc.2
+pilot_release=https://github.com/spartaskai/spartask-deploy/releases/download/v1.5.1-rc.3
 curl -fL "$pilot_release/spartask-deploy-linux-amd64.tar.gz" -o "$pilot_tmp/spartask-deploy-linux-amd64.tar.gz"
 curl -fL "$pilot_release/SHA256SUMS" -o "$pilot_tmp/SHA256SUMS"
 (cd "$pilot_tmp" && grep ' spartask-deploy-linux-amd64.tar.gz$' SHA256SUMS | sha256sum -c -)
 tar -xzf "$pilot_tmp/spartask-deploy-linux-amd64.tar.gz" -C "$pilot_tmp"
 sudo cp -p spartaskctl "spartaskctl.before-speech-$(date +%Y%m%d%H%M%S)"
 sudo install -m 755 "$pilot_tmp/spartask-deploy/spartaskctl" ./spartaskctl
-sudo install -m 644 "$pilot_tmp/spartask-deploy/speech-profile.json" ./speech-profile.json
 sudo install -m 644 "$pilot_tmp/spartask-deploy/.env.example" ./.env.example
+sudo ./spartaskctl update 1.6.1-rc.4
+sudo install -m 644 "$pilot_tmp/spartask-deploy/speech-profile.json" ./speech-profile.json
 sudo ./spartaskctl config -speech-local
-sudo ./spartaskctl update 1.6.1-rc.3
 sudo ./spartaskctl config -check
 sudo ./spartaskctl restart
 sudo ./spartaskctl status
 ```
 
-`update` varsayılan olarak uygulama yedeğini alır. `.env`, mevcut LiveKit domain/TLS/anahtarları
-ve veritabanı bu dosya kopyalama adımında korunur. `config -speech-local` iki bağımsız speech
-anahtarı üretir; tekrar çalıştırıldığında yerel anahtarları korur. Model/voice/imaj/adresleri
-profil belirler. Cloudflare veya yeni speech portu açılması gerekmez; sağlayıcılar Docker iç ağındadır.
+`update` varsayılan olarak uygulama yedeğini alır. `.env`, LiveKit domain/TLS/anahtarları ve veritabanı
+korunur. `config -speech-local` STT'yi açık, sunucu TTS'ini kapalı ve `MEETING_VOICE_AGENT_SPEECH=browser`
+yapar; mevcut yerel anahtarları korur. `restart` sonrası `speech-tts` container'ı çalışmaz.
+
+Sunucuda ajan sesine geri dönmek için `.env` içinde `SPEECH_TTS_ENABLED=true` ve
+`MEETING_VOICE_AGENT_SPEECH=server` yapıp `spartaskctl restart` çalıştırın (`config -speech-local`
+tekrar çalıştırılırsa tarayıcı moduna döner).
 
 ## Daily kabulü
 
-1. Sayfayı yenileyip yeni Daily toplantısı açın.
-2. Kamerasız veya görüntülü katılın. Başlangıçta mikrofon kapalıdır; açıkça açın.
-3. Ajan sesinin hazır olduğunu kontrol edin. AI çalışanı arayüzde seçmeyin.
-4. Ajanın adıyla başlayan kısa bir İngilizce cümle söyleyin ("Ada, what did you finish yesterday?").
-   Metin dökümünü, ilk sesin gelme süresini ve ajanın İngilizce sesli yanıtını kontrol edin. Adını
-   söylemeden bir devam sorusu sorun; aynı ajan cevap vermelidir. Ajan konuşurken araya girin;
-   ajan susmalı, ses kapanmamalıdır.
-5. Yazılı sohbetin masaüstünde görüntünün yanında kullanılabildiğini kontrol edin.
-6. Görüşmeden ayrılın; toplantıyı bitirin ve oda/işlerin kapandığını kontrol edin.
-
-RC.1 yerel gerçek model kabulünde 16/16 kontrol geçti: sentetik TTS→STT, bearer doğrulama, sınırlar,
-uzun metin ve TCP bağlantısı kesildikten sonra toparlanma. RC.3'te bağlantı kesilince model yeniden
-yüklenmez; `acceptance.py` bunu `tts_network_cancellation_keeps_model` ile denetler. TTS tepe belleği yaklaşık 1,36 GiB;
-1000 karakter/57 saniyelik ses yaklaşık 55 saniyede üretildi. Gerçek mikrofon, tarayıcı ve VPS
-kapasitesi kullanıcı kabulünde ölçülür. Kısa ajan yanıtları konuşma akışını hızlandırır.
+1. Sayfayı yenileyip yeni Daily toplantısı açın; mümkünse önce kulaklıkla, sonra hoparlörle deneyin.
+2. Kamerasız veya görüntülü katılın. Mikrofonu açın. "AI sesleri: açık" ve yerel ses adının
+   göründüğünü kontrol edin.
+3. "Ada, what did you finish yesterday?" deyin. Metin dökümünü ve ajanın sesli cevabının ne kadar
+   sürede başladığını kontrol edin.
+4. Hoparlörle: ajan konuşurken sessiz kalın; ajanın cümleleri sizin adınıza yazıya dökülmemeli ve ajan
+   kendine cevap vermemeli.
+5. Adını söylemeden bir devam sorusu sorun; aynı ajan cevap vermeli. Ajan konuşurken araya girin;
+   ajan susmalı.
+6. Sessiz odada bir dakika bekleyin; uydurma cümle yazılmamalı.
+7. Görüşmeden ayrılın; toplantıyı bitirin ve oda/işlerin kapandığını kontrol edin.
 
 Kapatmak için `.env` içinde `SPEECH_ENABLED=false` ve `MEETING_VOICE_ENABLED=false` yapıp
 `spartaskctl restart` çalıştırın. Video ve yazılı toplantı kullanılmaya devam eder.

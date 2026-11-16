@@ -170,7 +170,12 @@ profil seçmez, anahtar üretmez ve dosya yazmaz.
 
 Profil İngilizce `whisper-base.en`, `kokoro-en` ve `af_heart` kullanır; CPU thread sayıları STT=2,
 TTS=2'dir. Başlangıç container sınırları STT 2 CPU/1g ve TTS 2 CPU/2g, ortak inference eşzamanlılığı
-1'dir (STT ve TTS aynı anda model çalıştırmaz). Bunlar ölçülmüş kapasite veya minimum RAM garantisi değildir. İngilizce dışı ihtiyaçlarda özel
+1'dir (STT ve TTS aynı anda model çalıştırmaz). Bunlar ölçülmüş kapasite veya minimum RAM garantisi değildir.
+
+Profil ajan cevabını tarayıcıda seslendirir: `SPEECH_STT_ENABLED=true`, `SPEECH_TTS_ENABLED=false`,
+`MEETING_VOICE_AGENT_SPEECH=browser`. TTS container'ı başlatılmaz ve TTS süreç adımları bu kurulumda
+sunulmaz. Sunucuda seslendirmeye dönmek için `SPEECH_TTS_ENABLED=true` ve
+`MEETING_VOICE_AGENT_SPEECH=server` yapıp `restart` çalıştırın; TTS ayarları profilde hazır durur. İngilizce dışı ihtiyaçlarda özel
 sağlayıcı yapılandırın ve `SPEECH_LOCAL_PROFILE` alanını boş bırakın. Bilinmeyen profil değerleri ve
 paketle uyuşmayan model/imaj ayarları geçersizdir.
 
