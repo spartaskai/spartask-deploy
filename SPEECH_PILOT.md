@@ -11,8 +11,10 @@ RC.3 pilot geri bildirimini giderir:
   ajanın tam adını ya da (başka katılımcıyla paylaşılmıyorsa) ilk adını söyleyin. Adsız devam
   cümleleri, son seslenilen ajana 30 saniye boyunca gider (`MEETING_VOICE_ADDRESS_WINDOW`). Pencereyi
   ajanın sesli cevabı yeniler; bir insanın adını söylemek pencereyi kapatır. Arayüz seçimi de çalışır.
-- **Cevap cümle cümle seslendirilir.** İlk ses, tüm cevap yerine ilk cümle üretilince başlar. Yerel
-  ölçümde üç cümlelik cevabın ilk sesi yaklaşık 3 saniyede geldi. Ajanlara sesli toplantıda en fazla
+- **Cevap cümle cümle seslendirilir.** İlk ses, tüm cevap yerine ilk cümle üretilince başlar. Geliştirme
+  makinesinde (VPS'ten hızlı) üç cümlelik cevabın ilk sesi yaklaşık 3 saniyede, söz kesmeden hemen
+  sonraki cevapta yaklaşık 5 saniyede geldi; VPS'te daha uzun olabilir. `processing_ms` artarsa TTS
+  için `SPEECH_TTS_CPUS=1` deneyin. Ajanlara sesli toplantıda en fazla
   üç kısa cümleyle cevap vermeleri söylenir.
 - **Söz kesme modeli yeniden yüklemez.** Ajanın sözü kesildiğinde TTS modeli kapanıp yeniden
   ısınmaz; sonraki cevap gecikmez.
