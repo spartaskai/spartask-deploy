@@ -39,6 +39,7 @@ type meetingPlan struct {
 
 func planMeeting(s stack, env *envFile) *meetingPlan {
 	p := &meetingPlan{services: map[string]any{}, env: map[string]string{}}
+	p.validateLocalSpeech(s, env)
 	for _, key := range env.keys() {
 		if strings.HasPrefix(key, "MEETING_") || strings.HasPrefix(key, "LIVEKIT_") || strings.HasPrefix(key, "SPEECH_") {
 			p.env[key] = env.Get(key)
@@ -182,7 +183,10 @@ func (p *meetingPlan) speechPlan(s stack, env *envFile) bool {
 	for _, kind := range []string{"STT", "TTS"} {
 		prefix := "SPEECH_" + kind
 		if meetingEnabled(env, prefix+"_MANAGED") {
-			keys = append(keys, prefix+"_IMAGE", prefix+"_ENV_FILE")
+			keys = append(keys, prefix+"_IMAGE")
+			if env.Get("SPEECH_LOCAL_PROFILE") != localSpeechProfile {
+				keys = append(keys, prefix+"_ENV_FILE")
+			}
 		} else {
 			keys = append(keys, prefix+"_URL")
 		}
@@ -220,8 +224,9 @@ func (p *meetingPlan) managedSpeech(s stack, env *envFile, prefix, service strin
 	if !filepath.IsAbs(path) {
 		path = s.path(path)
 	}
+	builtin := env.Get("SPEECH_LOCAL_PROFILE") == localSpeechProfile
 	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
+	if !builtin && (err != nil || !info.Mode().IsRegular()) {
 		p.invalid = append(p.invalid, prefix+"_ENV_FILE: mevcut, normal bir özel env dosyası olmalı")
 	}
 	v := p.container(env.Get(prefix+"_IMAGE"), env, prefix)
@@ -231,6 +236,21 @@ func (p *meetingPlan) managedSpeech(s stack, env *envFile, prefix, service strin
 	v["healthcheck"] = map[string]any{
 		"test":     []string{"CMD", "python3", "-c", "import os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8000/health',headers={'Authorization':'Bearer '+os.environ['SPARTASK_HEALTH_KEY']}); urllib.request.urlopen(r,timeout=3).close()"},
 		"interval": "5s", "timeout": "4s", "retries": 6, "start_period": "60s",
+	}
+	if builtin {
+		delete(v, "env_file")
+		delete(v, "volumes")
+		threads := "1"
+		if prefix == "SPEECH_STT" {
+			threads = "2"
+		}
+		v["environment"] = map[string]string{"SPEECH_SERVICE_API_KEY": env.Get(prefix + "_API_KEY"), "SPARTASK_HEALTH_KEY": env.Get(prefix + "_API_KEY"), "SPEECH_CPU_THREADS": threads}
+		v["read_only"], v["user"] = true, "65532:65532"
+		v["tmpfs"] = []string{"/tmp:size=32m,noexec,nosuid"}
+		if prefix == "SPEECH_TTS" {
+			// eSpeak loads its private shared-library copy from a temporary file.
+			v["tmpfs"] = []string{"/tmp:size=32m,exec,nosuid"}
+		}
 	}
 	p.services[service] = v
 }

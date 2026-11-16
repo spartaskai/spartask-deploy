@@ -206,26 +206,32 @@ func (c *installedConfig) blocking() bool {
 	return false
 }
 
-// runConfig is `spartaskctl config [-check] [-meeting]`.
+// runConfig is `spartaskctl config [-check] [-meeting] [-speech-local]`.
 func runConfig(ctx context.Context, s stack, args []string) error {
 	return configWith(ctx, s, args, newPrompter(false), defaultAdvisorProbes(s))
 }
 
 func configWith(ctx context.Context, s stack, args []string, p *prompter, probes advisorProbes) error {
 	fs := flag.NewFlagSet("config", flag.ContinueOnError)
+	speechSetup := fs.Bool("speech-local", false, "configure the bundled English CPU STT/TTS and voice profile")
 	checkOnly := fs.Bool("check", false, "only report; do not add or generate anything")
 	meetingSetup := fs.Bool("meeting", false, "guide LiveKit setup (with -check: show only the meeting guide, without prompting or writing)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
-		return errors.New("usage: spartaskctl config [-check] [-meeting]")
+		return errors.New("usage: spartaskctl config [-check] [-meeting] [-speech-local]")
 	}
 	env, err := loadInstalledEnv(s)
 	if err != nil {
 		return err
 	}
 	before := env.Bytes()
+	if *speechSetup && !*checkOnly {
+		if err := configureLocalSpeech(s, env); err != nil {
+			return err
+		}
+	}
 	if *meetingSetup && !*checkOnly {
 		if err := configureMeeting(p, env); err != nil {
 			return err

@@ -150,6 +150,39 @@ Resmi ağ gereksinimleri: [LiveKit deployment](https://docs.livekit.io/transport
 
 ## STT/TTS sağlayıcı sözleşmesi
 
+### Yayımlanan yerel İngilizce profili
+
+Dağıtım paketinin `speech-profile.json` dosyası `english-cpu-v1` için yayımlanmış STT, TTS ve
+voice imajlarının değişmez digest referanslarını içerir. Etiket veya kullanıcı tarafından uydurulan
+hash kabul edilmez. Dosya yoksa ya da profil geçersizse kurulum hata verir; otomatik imaj seçmez.
+
+```bash
+./spartaskctl config -speech-local
+./spartaskctl config -check
+./spartaskctl restart
+```
+
+İlk komut açık bir sahiplik değişimidir: mevcut harici/özel STT/TTS adreslerini temizleyip iki servisi
+bu stack'e taşır; sağlayıcı ve sağlık kontrolü için eşleşen, bağımsız anahtarlar üretir. Aynı profili
+yeniden seçmek mevcut anahtarları döndürmez. Düz `config`, `config -meeting` veya güncelleme
+harici sağlayıcıyı bu profile geçirmez. `config -speech-local -check` yalnız mevcut ayarları raporlar;
+profil seçmez, anahtar üretmez ve dosya yazmaz.
+
+Profil İngilizce `whisper-base.en`, `kokoro-en` ve `af_heart` kullanır; CPU thread sayıları STT=2,
+TTS=1'dir. Başlangıç container sınırları STT 2 CPU/1g ve TTS 1 CPU/2g, ortak inference eşzamanlılığı
+1'dir. Bunlar ölçülmüş kapasite veya minimum RAM garantisi değildir. İngilizce dışı ihtiyaçlarda özel
+sağlayıcı yapılandırın ve `SPEECH_LOCAL_PROFILE` alanını boş bırakın. Bilinmeyen profil değerleri ve
+paketle uyuşmayan model/imaj ayarları geçersizdir.
+
+Bundled servisler anahtarı doğrudan `SPEECH_SERVICE_API_KEY` olarak alır; ayrıca özel `*_ENV_FILE`
+hazırlanmaz. Salt okunur kök dosya sistemi ve `/tmp` tmpfs kullanırlar; model dosyaları imajın içindedir.
+TTS'nin eSpeak kütüphanesi geçici paylaşımlı kütüphaneyi `/tmp` üzerinden yüklediğinden yalnız bu
+servisin tmpfs'i `exec,nosuid` kullanır; STT'de `noexec,nosuid` korunur.
+Host portu veya model indirme volume'ü açılmaz. Komut yalnız yapılandırır; Docker/imaj indirme ve
+servis başlatma `restart` sırasında gerçekleşir. Ajan sesi ayrıca tamamlanmış LiveKit ayarları ister.
+
+### Özel veya harici sağlayıcılar
+
 Ortak alanlar: `SPEECH_PROVIDER_REVISION`, iki sağlayıcının `*_MODEL`, `*_API_KEY` alanları ve
 `SPEECH_TTS_VOICE`. Harici sağlayıcılarda OpenAI uyumlu `*_URL` base adresi (`/v1` dahil) girilir.
 HTTPS tercih edilir; HTTP yalnız özel/loopback IP veya yönetilen Docker DNS adlarında kabul edilir.
@@ -171,8 +204,8 @@ Yerel sağlayıcıda `SPEECH_<STT|TTS>_MANAGED=true`, `*_IMAGE`, `*_ENV_FILE` do
 env dosyaları otomatik yedeklenmez. Model volume'ları uygulama yedeğine dahil edilmez; cache tekrar
 indirilebilir olmalı, özel modeller ayrıca yedeklenmelidir.
 
-Henüz yayımlanmış/onaylanmış STT/TTS üretim imajı varsayılmaz. Yerel deney imajları otomatik
-seçilmez veya registry'ye gönderilmez. Model/voice/vocoder/OS/Python lisans ve zafiyet envanteri,
+Özel yerel deney imajları otomatik seçilmez veya registry'ye gönderilmez.
+Model/voice/vocoder/OS/Python lisans ve zafiyet envanteri,
 özellikle müşteriye on-prem dağıtım öncesinde tamamlanmalıdır. İmaj alanı boşken ilgili model çalışmaz.
 
 ## Voice ve kapasite
@@ -194,6 +227,17 @@ bu, DNS/TLS/WebRTC bağlantısını veya konuşma doğruluğunu doğrulamaz. Har
 `config` sırasında test edilmez. Her container için bekleme üst sınırı `MEETING_SERVICES_START_TIMEOUT`'tır.
 
 ## Doğrulama ve sınırlar — 15 Kasım 2026
+
+İngilizce CPU profili için ek yerel kabul: gerçek Kokoro → PCM16/48kHz WAV → Whisper akışı,
+eksik/yanlış bearer anahtarı, yanlış model, giriş limitleri, 1000 karakter sentezi ve gerçek TCP
+bağlantısı kesildikten sonra modelin toparlanması toplam 16 kontrolde geçti. Sentetik 3,52 saniyelik
+sesin TTS üretimi 4,8–6,1 saniye, STT çözümü 2,3–3,5 saniye sürdü; beklenen altı kelimenin tamamı
+bulundu. Bunlar yerel Docker ölçümleridir. STT tepe belleği yaklaşık 465 MiB oldu; TTS 1 GiB
+sınırında bellek baskısı gördüğünden profil üst sınırı 2 GiB seçildi. Nihai 2 GiB/tek CPU kabulü
+16/16 geçti; TTS tepe belleği yaklaşık 1,36 GiB, 1000 karakter/57,24 saniye ses üretimi 55,22
+saniye oldu. İmaj inference süresi 75 saniye ile sınırlıdır. VPS kapasitesi ve gerçek
+mikrofon doğruluğu ayrıca ölçülmelidir. Yerel imaj boyutları TTS yaklaşık 1,46 GB, STT 1,12 GB'dır;
+ortak katmanlar paylaşılır. Derleme cache'i çalışma zamanı gereksinimi değildir.
 
 - Windows ve Linux Go testleri / `go vet` çalıştırıldı. Linux kurulum/güncelleme testleri ağsız,
   geçici container'da fake Docker ile yürütüldü.

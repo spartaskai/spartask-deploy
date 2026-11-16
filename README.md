@@ -207,6 +207,11 @@ container başlatmaz, imaj veya model indirmez. Ayarları doldurup `spartaskctl 
 Kısa LiveKit kurulumu için `spartaskctl config -meeting` kullanın: bu sunucu / harici / kapalı
 seçimini sorar. Aynı sunucuda yalnız meeting adresi, erişilebilir IPv4 ve sabit LiveKit imajı
 girilir; boş key/secret üretilir. `config -meeting -check` soru sormadan ve yazmadan rehberi gösterir.
+Paketin yayımlanan İngilizce CPU STT/TTS profilini seçmek için `spartaskctl config -speech-local`
+kullanın. Bu açık seçim mevcut harici STT/TTS sağlayıcılarını yerel servislerle değiştirir; paketle gelen
+`speech-profile.json` digest'lerini ve eşleşen servis anahtarlarını kullanır. Tekrar seçim anahtarları
+korur. `config -speech-local -check` yalnız mevcut durumu raporlar ve dosya yazmaz. LiveKit ayrıca
+hazırlanmalıdır; ayrıntılar ve kaynak sınırları [MEETING_DEPLOYMENT.md](MEETING_DEPLOYMENT.md) içindedir.
 Yalnız açık **ve eksiksiz** özelliklerin servisleri başlar. Kapatılan veya gerekli ayarı eksilen
 özelliklerin eski container'ları sonraki `restart` sırasında durdurulur ve kaldırılır; model önbelleği korunur.
 
