@@ -25,13 +25,17 @@ olarak yayımlanmaz; bir metnin kaydı herkesin onu duyduğunu kanıtlamaz.
 
 ## Eski sunucu speech kurulumunun kaldırılması
 
-Aktif toplantıları bitirin. Yeni release'in `upgrade-browser-speech.sh` scriptini kullanın.
-Script eski speech işi veya executor tanımı varsa önce durur; geçmiş verileri silmez.
-Binary/env/ilgili compose ve profil dosyalarını yedekler, bir geri dönüş scripti üretir.
-Yeni config SPEECH_*, MEETING_VOICE_* ve SPARTASK_VOICE_IMAGE atamalarını kaldırır; tanımları
-artık yeni env şablonunda bulunmaz. Yalnız tarayıcı ve LiveKit ayarları tutulur.
+Yalnız sunucu speech pilotu (v1.5.1-rc.1 – rc.5 paketleri) kurulmuş sunucular içindir.
+Aktif toplantıları bitirin; `.env` ve `spartaskctl` dosyalarını yedekleyin. Ardından yeni
+paketin `spartaskctl` binary'si ve `.env.example` dosyasıyla sırasıyla
+`config -speech-browser`, `config -check` ve `update <sürüm>` çalıştırın.
 
-Uygulama update/restart işlemi eski voice, speech-stt ve speech-tts container'larını
---remove-orphans ile kaldırır. Son kontrol kalan hedef container'ları hata olarak bildirir.
-Başarılı geçişte eski speech-profile.json ve SPEECH_PILOT.md kurulumdan kaldırılır.
+Config SPEECH_*, MEETING_VOICE_* ve SPARTASK_VOICE_IMAGE atamalarını kaldırır; tanımları
+artık env şablonunda bulunmaz. Yalnız tarayıcı ve LiveKit ayarları tutulur.
+Update/restart eski voice, speech-stt ve speech-tts container'larını --remove-orphans ile
+kaldırır; `docker compose ps -a` ile kalmadığını doğrulayın. Eski speech-profile.json ve
+SPEECH_PILOT.md dosyaları artık kullanılmaz, elle silinebilir.
 Uygulanmış migration'lar, speech iş geçmişi ve meeting transkriptleri korunur.
+
+Sunucu speech imajları (spartask-voice, spartask-speech-stt, spartask-speech-tts) artık
+yayımlanmaz. Bu imajlara bağlı eski pilot paketleri yeniden kurulamaz.
