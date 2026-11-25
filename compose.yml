@@ -48,6 +48,7 @@ services:
       - "443:443/udp"
     environment:
       # Empty SPARTASK_SITES: the domain and every company subdomain.
+      SPARTASK_DOMAIN: ${SPARTASK_DOMAIN}
       SPARTASK_SITES: "${SPARTASK_SITES:-${SPARTASK_DOMAIN}, *.${SPARTASK_DOMAIN}}"
       SPARTASK_TLS: ${SPARTASK_TLS:-/certs/cert.pem /certs/key.pem}
       CADDY_TRUSTED_PROXIES: ${CADDY_TRUSTED_PROXIES:-private_ranges}

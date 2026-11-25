@@ -1,4 +1,4 @@
-# Marketplace storefront (only on the platform server; see compose.marketplace.yml).
+# Marketplace storefront and installer shortcuts (only on the platform server; see compose.marketplace.yml).
 {$MARKETPLACE_DOMAIN} {
 	tls {$SPARTASK_TLS}
 	encode zstd gzip
@@ -14,4 +14,21 @@
 
 	# nginx in marketplace-web serves the SPA and proxies /api to marketplace-backend.
 	reverse_proxy marketplace-web:3000
+}
+
+get.{$SPARTASK_DOMAIN} {
+	tls {$SPARTASK_TLS}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	@win path /windows /windows/
+	redir @win https://github.com/spartaskai/spartask-deploy/releases/latest/download/install.ps1 302
+
+	@linux path /
+	redir @linux https://github.com/spartaskai/spartask-deploy/releases/latest/download/install.sh 302
+
+	respond "Not Found" 404
 }
