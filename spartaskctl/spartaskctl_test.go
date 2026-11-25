@@ -159,8 +159,8 @@ func TestTarRoundTripAndUnsafePaths(t *testing.T) {
 }
 
 func TestReorderFlagsAcceptsFlagsAfterVersion(t *testing.T) {
-	got := reorderFlags([]string{"1.2.0", "-no-backup", "-marketplace-version", "1.1.0"})
-	want := []string{"-no-backup", "-marketplace-version", "1.1.0", "1.2.0"}
+	got := reorderFlags([]string{"1.2.0", "-no-backup", "-keep-images", "-marketplace-version", "1.1.0"})
+	want := []string{"-no-backup", "-keep-images", "-marketplace-version", "1.1.0", "1.2.0"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("got %v want %v", got, want)
 	}

@@ -32,12 +32,13 @@ func runUpdate(ctx context.Context, s stack, args []string) error {
 func update(ctx context.Context, s stack, args []string, tags func(context.Context, string) ([]string, error)) error {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	noBackup := fs.Bool("no-backup", false, "skip the pre-update backup")
+	keepImages := fs.Bool("keep-images", false, "keep unused Docker images after the update")
 	marketplaceVersion := fs.String("marketplace-version", "", "also switch the marketplace to this release")
 	if err := fs.Parse(reorderFlags(args)); err != nil {
 		return err
 	}
 	if fs.NArg() > 1 {
-		return errors.New("usage: spartaskctl update [version] [-marketplace-version X] [-no-backup]")
+		return errors.New("usage: spartaskctl update [version] [-marketplace-version X] [-no-backup] [-keep-images]")
 	}
 	version := strings.TrimPrefix(fs.Arg(0), "v")
 	if version != "" && !versionPattern.MatchString(version) {
@@ -108,6 +109,11 @@ func update(ctx context.Context, s stack, args []string, tags func(context.Conte
 		return revert(err)
 	}
 	fmt.Printf("SparTask %s -> %s is running.\n", previous, version)
+	if !*keepImages {
+		if err := s.pruneImages(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: unused Docker images could not be pruned: %v\n", err)
+		}
+	}
 	return nil
 }
 
@@ -155,7 +161,7 @@ func reorderFlags(args []string) []string {
 		if strings.HasPrefix(arg, "-") {
 			flags = append(flags, arg)
 			// value of a "-flag value" pair (boolean flags here never take a separate value)
-			if !strings.Contains(arg, "=") && arg != "-no-backup" && arg != "--no-backup" && arg != "-yes" && arg != "--yes" && arg != "-with-config" && arg != "--with-config" && i+1 < len(args) {
+			if !strings.Contains(arg, "=") && arg != "-no-backup" && arg != "--no-backup" && arg != "-keep-images" && arg != "--keep-images" && arg != "-yes" && arg != "--yes" && arg != "-with-config" && arg != "--with-config" && i+1 < len(args) {
 				flags = append(flags, args[i+1])
 				i++
 			}

@@ -68,6 +68,12 @@ func (s stack) output(ctx context.Context, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// pruneImages removes unused Docker images after an update succeeds so old releases do not fill the disk.
+func (s stack) pruneImages(ctx context.Context) error {
+	_, err := s.output(ctx, "image", "prune", "-a", "-f")
+	return err
+}
+
 // composeStream runs `docker compose <args>` with stdin and stdout connected to the given streams
 // (database dumps and restores).
 func (s stack) composeStream(ctx context.Context, stdin io.Reader, stdout io.Writer, args ...string) error {
